@@ -1,0 +1,45 @@
+name: EDITH — fırsat taraması
+
+# NOT: Bu dosya EDITH ayrı bir repoya taşındığında repo kökündeki
+# .github/workflows/ altına gitmeli. Alt klasördeki workflow'lar çalışmaz.
+
+on:
+  schedule:
+    # Her 3 saatte bir. GitHub Actions cron'u UTC ve birkaç dakika gecikebilir.
+    - cron: "0 */3 * * *"
+  workflow_dispatch: # elle tetikleme (ilk testler için)
+
+concurrency:
+  # Bir tarama uzarsa ikincisi başlamasın — aynı içerik iki kez analiz edilmesin.
+  group: edith-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Taramayı çalıştır
+        run: npm run scan
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          AI_PROVIDER: ${{ secrets.AI_PROVIDER }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_BASE_URL: ${{ secrets.AI_BASE_URL }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
+          REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
+          REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}

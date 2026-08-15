@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    /* iOS Safari'de girdi odaklanınca otomatik yakınlaştırmayı engeller. */
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-obsidian text-ink antialiased;
+    /* Alt aksiyon bandı sabit; içerik onun altında kalmasın. */
+    overscroll-behavior-y: none;
+  }
+
+  /* Dokunmatikte hover diye bir şey yok — bilgi asla hover'a gizlenmez.
+     Buradaki tek kullanım görsel geri bildirim. */
+  @media (hover: hover) {
+    .hoverable:hover {
+      @apply bg-surfaceRaised;
+    }
+  }
+}
+
+@layer components {
+  /* Dokunma hedefi tabanı: 44px, Apple'ın önerdiği alt sınır. */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+
+  .card {
+    @apply rounded-xl border border-border bg-surface p-4;
+  }
+
+  .badge {
+    @apply inline-flex items-center rounded-md px-2 py-1 text-xs font-medium;
+  }
+
+  .btn {
+    @apply touch-target inline-flex items-center justify-center rounded-lg px-4 text-sm font-semibold transition-opacity active:opacity-70;
+  }
+
+  .btn-primary {
+    @apply btn bg-gold text-obsidian;
+  }
+
+  .btn-ghost {
+    @apply btn border border-border text-inkMuted;
+  }
+}
