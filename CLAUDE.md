@@ -1,21 +1,21 @@
-# CLAUDE.md — EDITH
+# CLAUDE.md - EDITH
 
-Reddit Growth & Networking Assistant. Zihinsel Güç'ü tanıtan, insan onaylı bir
-asistan. Her oturumda oku.
+Reddit Growth and Networking Assistant. Zihinsel Guc'u tanitan, insan onayli
+bir asistan. Her oturumda oku.
 
 ## Durum (2026-08-16)
 
-Kod: Faz 1-5 (MVP) tamamlandı. Faz 6'nın çekirdeği (kurallar motoru + kimlik
-koruması) MVP içinde erken geldi. Faz 7-10 (kalıcı bellek arayüzü, /sohbet,
-izleme, öğrenme) hiç başlanmadı.
+Kod: Faz 1-5 (MVP) tamamlandi. Faz 6'nin cekirdegi (kurallar motoru + kimlik
+korumasi) MVP icinde erken geldi. Faz 7-10 (kalici bellek arayuzu, /sohbet,
+izleme, ogrenme) hic baslanmadi.
 
-Kurulum: Supabase projesi kuruldu, şema çalıştırıldı (8 tablo). Yerel .env
-dolduruldu (Supabase URL + Secret key + dashboard şifresi + session secret).
-Reddit app ve AI anahtarı HENÜZ YOK.
+Kurulum: Supabase projesi kuruldu, sema calistirildi (8 tablo). Yerel .env
+dolduruldu (Supabase URL + Secret key + dashboard sifresi + session secret).
+Reddit app ve AI anahtari HENUZ YOK.
 
-## Sıradaki adımlar (sırayla)
+## Siradaki adimlar (sirayla)
 
-1. Reddit script app oluştur (reddit.com/prefs/apps) -> client id + secret
+1. Reddit script app olustur (reddit.com/prefs/apps) -> client id + secret
 2. DeepSeek API key al (platform.deepseek.com)
 3. .env'e REDDIT_* ve AI_API_KEY satirlarini doldur
 4. npm run dev ile yerelde dashboard'u test et, giris yap
@@ -32,6 +32,8 @@ Reddit app ve AI anahtarı HENÜZ YOK.
   SADECE .env'e yazilmali (gitignore'da).
 - Supabase Secret key bir ara yanlislikla .env.example'a yazilmis olabilecegi
   icin rotate edildi. Guncel anahtar simdi .env'de.
+- PowerShell'e Turkce ozel karakter (u, c, s, g, i, o) iceren metin yapistirinca
+  bozulabiliyor (mojibake). Bu dosyada bilincli olarak Turkce karakter YOK.
 
 ## Mimari ozeti
 
