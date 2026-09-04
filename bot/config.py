@@ -154,6 +154,22 @@ class HealthConfig:
 
 
 @dataclass
+class ShadowConfig:
+    """Golge modu: edge oldugunde durmak yerine kagit uzerinde devam etmek.
+
+    Asimetrik esikler kasten:
+      - golgeye GECMEK icin: beklentinin negatif oldugu kanitlanmali
+      - canliya DONMEK icin: beklentinin pozitif oldugu kanitlanmali
+    Yani supheli durumda sermaye risk almaz. Yanlis yonde hata yapmanin
+    maliyeti simetrik degil.
+    """
+    enabled: bool = True
+    min_trades_to_resume: int = 40   # golgede en az bu kadar sanal islem
+    resume_z: float = 1.64           # alt guven siniri > 0 (tek yonlu %95)
+    notify_on_transition: bool = True
+
+
+@dataclass
 class Config:
     mode: str = "paper"
     symbols: List[str] = field(default_factory=lambda: ["BNBUSDT"])
@@ -167,6 +183,7 @@ class Config:
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     learning: LearningConfig = field(default_factory=LearningConfig)
     health: HealthConfig = field(default_factory=HealthConfig)
+    shadow: ShadowConfig = field(default_factory=ShadowConfig)
 
     # ---- API kimlik bilgileri sadece ortam degiskeninden okunur ----
     @property
@@ -238,6 +255,13 @@ class Config:
             errs.append("komisyonlar negatif olamaz")
         if e.max_spread_bps <= 0:
             errs.append("max_spread_bps > 0 olmali")
+
+        sh = self.shadow
+        if sh.enabled:
+            if sh.min_trades_to_resume < 20:
+                errs.append("shadow.min_trades_to_resume >= 20 olmali")
+            if sh.resume_z < 1.28:
+                errs.append("shadow.resume_z >= 1.28 olmali")
 
         h = self.health
         if h.enabled:
@@ -321,6 +345,7 @@ def load_config(path: str | Path) -> Config:
         ("execution", ExecutionConfig),
         ("learning", LearningConfig),
         ("health", HealthConfig),
+        ("shadow", ShadowConfig),
     ):
         nested[key] = _build(cls, raw.pop(key, {}) or {})
 

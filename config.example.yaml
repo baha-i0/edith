@@ -186,3 +186,33 @@ health:
   drawdown_critical_pct: 22
   fee_drag_warn_pct: 40      # brut karin %40'indan fazlasi komisyona gidiyorsa
   notify_on_warn: false      # sadece 'mudahale' seviyesi bildirim gonderir
+
+# ============================================================================
+# GOLGE MODU (otonom kendini koruma)
+# ============================================================================
+# Stratejinin edge'i olurse ne olacak? Uc secenek var:
+#   a) Dur ve insani bekle          -> otonom degil; sen uyuyorsan sistem oludur
+#   b) Parametreleri yeniden ayarla -> bozulmayi gizler; olculdu, beklentiyi
+#                                      +0.088R'den +0.041R'ye dusuruyor
+#   c) GOLGE MODU                   -> islem yapmaya devam et, ama kagit uzerinde
+#
+# (c) secildi. Bot sinyal uretmeye, pozisyon acmaya, yonetmeye ve kapatmaya
+# devam eder; sadece borsaya emir gitmez. Kanit geri gelirse KENDILIGINDEN
+# canliya doner. Gelmezse sonsuza kadar golgede kalir ve sermaye korunur.
+#
+# Neden "dur ve bekle"den iyi: durmak bilgi uretmez. Golge modu olcmeye
+# devam eder, boylece "gercekten bozuldu mu yoksa gecici rejim mi" sorusu
+# cevaplanabilir. Durmus bir bot bunu asla ogrenemez.
+#
+# Neden "yeniden optimize et"ten iyi: golge modu parametreleri DEGISTIRMEZ.
+# Ayni strateji, ayni ayarlar, sadece para yok. Geri donus karari gercek bir
+# sinavdir, gecmise uydurulmus bir parametre degil.
+shadow:
+  enabled: true
+  # Asimetri kasten:
+  #   golgeye GECMEK icin  -> beklentinin NEGATIF oldugu kanitlanmali (health)
+  #   canliya DONMEK icin  -> beklentinin POZITIF oldugu kanitlanmali (burasi)
+  # Supheli durumda sermaye risk almaz.
+  min_trades_to_resume: 40   # golgede en az bu kadar sanal islem
+  resume_z: 1.64             # alt guven siniri > 0 (tek yonlu %95)
+  notify_on_transition: true

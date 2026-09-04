@@ -1,10 +1,11 @@
 # Baslangic Rehberi
 
-Bu dosya, istatistik veya programlama bilmeden botu calistirmak icin yazildi.
+Bot **tam otonom** calisir: hangi sembol, hangi yon, ne kadar, ne zaman
+kapatilacak -- hepsine kendisi karar verir. Sen kurarsin, sonra dokunmazsin.
 
 ---
 
-## 0. Once sunu bil
+## 0. Once gercek rakam
 
 **Bot para basmaz.** Yillik ~%12 beklentisi var ve yolda **%20 dusus** goreceksin.
 
@@ -16,70 +17,111 @@ $200 ile:
 | Normal karsilanan en kotu dusus | ~-$42 (hesap $158'e iner) |
 | Bunun kalici olma ihtimali | var |
 
-Hesap $158'e indiginde botu kapatirsan, kaybi kalici hale getirmis olursun.
-Backtest'te bu dususler defalarca yasandi ve her seferinde toparlandi -- ama
-bu gelecekte de toparlanacagini garanti etmez.
-
 **Kaybetmeyi goze alamayacagin parayi koyma.**
 
 ---
 
-## 1. Kurulum (bir kez)
+## 1. Kurulum (bir kez, ~5 dakika)
 
 ```bash
 pip install -r requirements.txt
 cp config.example.yaml config.yaml
+cp .env.example .env          # Telegram bilgilerini buraya yaz (onerilir)
 ```
 
-## 2. Kagit modda calistir (en az 2 hafta, atlama)
+## 2. Servis olarak kur -- bundan sonra hicbir sey yapmayacaksin
 
 ```bash
-python -m bot paper
+python -m bot install --mode paper
 ```
 
-Gercek fiyatlar, sahte para. Terminali kapatma -- kapatirsan bot durur.
-Arka planda calistirmak icin:
+Bu komut isletim sistemine gore dogru dosyayi uretir ve calistiracagin
+**iki komutu** ekrana yazar. Onlari kopyala-yapistir, bitti.
 
-```bash
-nohup python -m bot paper > /dev/null 2>&1 &
-```
+Bundan sonra:
 
-## 3. Gunde bir kez tek komut
-
-```bash
-python -m bot doctor
-```
-
-Bu komut sana duz Turkce soyler. Uc cevaptan biri gelir:
-
-| Cikti | Ne yapacaksin |
+| Olay | Ne olur |
 |---|---|
-| `HER SEY YOLUNDA` | Hicbir sey. Kapat, git. |
-| `DIKKAT` | Yine hicbir sey. Sadece haberin olsun diye. |
-| `MUDAHALE GEREKIYOR` | Ekranda yazan `YAP:` satirini uygula. |
+| Bilgisayari yeniden baslatirsin | Bot kendiliginden acilir |
+| Bot cokerse | 30 saniye icinde kendini toparlar |
+| Internet keserse | Baglanti gelince kaldigi yerden devam eder |
+| Sen uyurken | Calisir, islem acar, kapatir |
+| Oturumu kapatirsin | Calismaya devam eder (linger) |
 
-Baska hicbir sey yapmana gerek yok. Log okumana, grafik incelemene,
-parametre ayarlamana gerek yok.
+Acik pozisyonlarin koruma emirleri **borsada durur** -- bilgisayar tamamen
+kapansa bile stop'un aktiftir.
 
-## 4. Telefona bildirim (opsiyonel ama onerilir)
+## 3. Patron rolu: pasif
 
-`.env` dosyasina Telegram bilgilerini yaz. Bot sadece **gercekten onemli**
-seyleri gonderir (gunde en fazla bir kez ayni konudan). Kar/zarar bildirimi
-icin surekli telefona bakma -- o, kotu kararlarin kaynagidir.
+Bot gunde **bir kez** telefonuna ozet gonderir. Sen bota gitmezsin, o sana gelir.
 
-## 5. Canliya gecmek
+```
+GUNLUK OZET - 12.03.2026
 
-Kagitta 2 hafta sorunsuz calistiysa:
+Bakiye: 214.30 USDT
+Toplam 38 islem | isabet %47 | net +14.30
+Acik pozisyon: 2 (BTCUSDT, SOLUSDT)
+
+DURUM: normal calisiyor
+Kontroller: her sey yolunda, yapman gereken bir sey yok.
+```
+
+Merak edersen istedigin an bakabilirsin (zorunlu degil):
 
 ```bash
-python -m bot testnet     # once sahte borsada gercek emir akisi
-python -m bot live        # sonra gercek para ('ANLADIM' yazmani ister)
+python -m bot doctor    # her sey yolunda mi?
+python -m bot status    # islem gecmisi
+python -m bot learn     # bot ne ogrendi
+```
+
+## 4. Canliya gecmek
+
+Kagitta **en az 2 hafta** sorunsuz calistiktan sonra:
+
+```bash
+python -m bot install --mode live    # 'ANLADIM' yazmani ister
 ```
 
 API anahtari kurallari:
 - Sadece **Futures** izni ac
 - **Withdraw iznini ASLA acma** (anahtarin calinsa bile paran cekilemez)
 - IP whitelist tanimla
+
+---
+
+## Bot kendini nasil korur (sen uyurken)
+
+| Durum | Botun karari | Senin rolun |
+|---|---|---|
+| Gunluk -%4 zarar | Bugunluk durur | Yok, yarin acilir |
+| Gunluk +%6 kar | Bugunluk durur | Yok, yarin acilir |
+| Ust uste 3 zarar | 4 saat soguma | Yok |
+| Bir sembol bozuldu (kanitli) | 14 gun o sembole girmez | Yok |
+| Stop surekli avlaniyor | Stop mesafesini genisletir | Yok |
+| Ayni emir hatasi 3 kez | O sembolu 7 gun devre disi birakir | Yok |
+| **Strateji tamamen bozuldu** | **Golge moduna gecer** | Yok |
+| Bot cokerse | Servis 30 sn icinde yeniden baslatir | Yok |
+
+### Golge modu nedir
+
+Stratejinin edge'i gercekten olurse (50+ islem ve %99 kesinlikle negatif),
+bot durmaz. **Kagit uzerinde islem yapmaya devam eder** -- sinyal uretir,
+sanal pozisyon acar, yonetir, kapatir. Sadece borsaya emir gitmez.
+
+Acik gercek pozisyonlar kapatilir, para guvende bekler.
+
+Golgede 40 sanal islemde beklentinin pozitif oldugu kanitlanirsa bot
+**kendiliginden canliya doner.** Kanitlanmazsa sonsuza kadar golgede kalir.
+
+Sen bu surecte hicbir sey yapmazsin. Sadece telefonuna bilgi mesaji gelir.
+
+Neden durmak yerine bu: **durmak bilgi uretmez.** Golge modu olcmeye devam
+eder, boylece "gercekten bozuldu mu yoksa gecici bir rejim mi" sorusu
+cevaplanabilir. Durmus bir bot bunu asla ogrenemez.
+
+Neden kendini yeniden ayarlamak yerine bu: golge modu **parametreleri
+degistirmez.** Ayni strateji, ayni ayarlar, sadece para yok. Geri donus
+karari gercek bir sinavdir, gecmise uydurulmus bir parametre degil.
 
 ---
 
@@ -90,42 +132,52 @@ Hayir. Isabet orani %46. Ust uste 8 kayip bile %93 ihtimalle 5 yil icinde
 gorulecek normal bir olay. Bot bu seride bilerek hicbir sey yapmaz.
 
 **"Hesap %15 dustu, kapatayim mi?"**
-Hayir. Backtest'te en kotu dusus %21 idi. Bu beklenen aralikta.
-`doctor` sana "MUDAHALE GEREKIYOR" demediyse bir sey yapma.
+Hayir. Backtest'te en kotu dusus %21 idi. Bu beklenen aralikta. Dususte
+botu kapatmak, kaybi kalici hale getirmenin en yaygin yoludur.
 
-**"Bot durdu, ne oldu?"**
-`python -m bot doctor` calistir. Uc sebepten biri olur:
-1. Gunluk zarar limiti (-%4) -- yarin kendiliginden acilir, bir sey yapma
-2. Gunluk kar hedefi (+%6) -- ayni sekilde
-3. Saglik kontrolu strateji bozuldu dedi -- ekranda yazani yap
+**"Bot kendi kendine ne kadar karar veriyor?"**
+Islem kararlarinin **tamami**: hangi sembol, hangi yon, ne kadar buyuklukte,
+hangi kaldiracla, ne zaman kismi kar alinacak, stop nereye tasinacak, ne
+zaman kapatilacak. Ayrica kendini durdurma, sembol banklama, stop kalibrasyonu
+ve golge moduna gecis/donus kararlari.
+
+**"Neyi kendi kendine DEGISTIRMEZ?"**
+Stratejisini ve ana parametrelerini. Bu kasitli: serbest birakildiginda
+beklenti +0.088R'den +0.041R'ye dusuyor (olculdu). Kendini surekli optimize
+eden bir sistem gecmise uyum saglar, gelecege degil.
 
 **"Daha cok kazanmak icin kaldiraci artirsam?"**
 Kaldirac getiriyi artirmaz, sadece marji dusurur. Pozisyon boyutunu stop
-mesafesi belirliyor. Getiriyi artirmak istersen `risk_per_trade_pct`'i
-yukselt -- ama dusus de ayni oranda buyur. %0.75 -> %1.5 yaparsan yillik
-beklenti ~%24'e cikar, dusus ~%40'a. Hesabi yariya inerken izleyebilir misin?
+mesafesi belirliyor. Getiri icin `risk_per_trade_pct`'i yukselt -- ama dusus
+de ayni oranda buyur. %0.75 -> %1.5 yaparsan yillik beklenti ~%24'e cikar,
+dusus ~%40'a.
 
-**"Bot kendini gelistirir mi?"**
-Sinirli ve kontrollu sekilde: stop mesafesini kalibre eder, bozulan sembolu
-kenara koyar, tekrarlayan operasyonel hatayi ogrenir. Ama stratejisini
-kendiliginden degistirmez. Bunu test ettim: serbest birakildiginda beklenti
-+0.088R'den +0.041R'ye dusuyor. Kendini surekli optimize eden bir sistem,
-gecmise uyum saglar, gelecege degil.
+---
 
-**"Bir sey bozulursa haberim olur mu?"**
-`doctor` her calistirmada bakar; bot kendisi de saatte bir kontrol eder.
-Kanit stratejinin bozuldugunu gosterirse **kendini durdurur** ve Telegram
-kuruluysa sana yazar.
+## Ayarlayabilecegin gunluk sinirlar
+
+`config.yaml` icinde, `risk:` bolumunde:
+
+```yaml
+risk_per_trade_pct: 0.75      # tek islemde riske atilan (equity yuzdesi)
+daily_loss_limit_pct: 4       # gunluk bu kadar zarar edince durur
+daily_profit_target_pct: 6    # gunluk bu kadar kar edince durur
+max_trades_per_day: 8         # gunluk islem tavani
+max_concurrent_positions: 4   # ayni anda acik pozisyon sayisi
+```
+
+Bunlarin disinda hicbir seye dokunma. Anlamadigin bir parametreyi
+degistirmek, botun matematigini bozar.
 
 ---
 
 ## Neyi asla yapma
 
-1. Zararin ortasinda riski artirma ("kaybi kapatayim")
-2. Kar ederken riski artirma ("nasil olsa calisiyor")
+1. Zararin ortasinda riski artirma
+2. Kar ederken riski artirma
 3. Dususte botu kapatip yukseliste geri acma
 4. Anlamadigin bir parametreyi degistirme
 5. Kaybetmeyi goze alamayacagin parayi koyma
 
-Bu bes maddenin hepsi, botun matematigini bozar. Botun en buyuk avantaji
-zeki olmasi degil, **duygusuz olmasi.** O avantaji elinden alma.
+Botun en buyuk avantaji zeki olmasi degil, **duygusuz olmasi.**
+O avantaji elinden alma.

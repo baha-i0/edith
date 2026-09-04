@@ -18,6 +18,7 @@ from .exchange.live import LiveBroker
 from .exchange.paper import PaperBroker
 from .health import CRITICAL, WARN, run_health_checks
 from .learning import Learner
+from .shadow import ShadowTracker
 from .models import LONG, Candle, Position, Trade
 from .notify import Notifier
 from .risk import RiskGuard, size_position, validate_signal_quality
@@ -39,11 +40,13 @@ class TradingEngine:
         self.strategy: TrendPullbackStrategy = build_strategy(cfg.strategy)
         self.guard = RiskGuard(cfg, store.load_risk_state())
         self.learner = Learner(cfg, store)
+        self.shadow = ShadowTracker(cfg, self.strategy, store)
         self.notifier = Notifier()
         self._last_bar: Dict[str, int] = {}
         # Stop yiyen islemler: fiyat sonradan hedefe giderse "stop avlanmasi"
         self._hunt_watch: Dict[str, dict] = {}
         self._last_health_ms = 0
+        self._last_report_day = ""
         self._last_alert: Dict[str, int] = {}
         self._running = True
 
@@ -63,6 +66,9 @@ class TradingEngine:
                  self.broker.equity())
         log.info("Basabas isabet orani (komisyon haric): %%%.1f | agirlikli hedef R=%.2f",
                  self.cfg.breakeven_win_rate() * 100, self.cfg.blended_target_r())
+        if self.guard.state.shadow_mode:
+            log.warning("GOLGE MODUNDA baslatildi: %s | %s",
+                        self.guard.state.shadow_reason, self.shadow.report())
         while self._running:
             started = time.time()
             try:
@@ -94,6 +100,71 @@ class TradingEngine:
                 log.exception("%s islenirken hata", symbol)
 
         self._maybe_health_check(now)
+        self._maybe_daily_report(now)
+
+    def _maybe_daily_report(self, now: int) -> None:
+        """Gunde bir kez telefona ozet gonderir.
+
+        Patron rolu pasif olmali: sen bota gitme, o sana gelsin. Gunde
+        BIR mesaj -- surekli kar/zarar bildirimi kotu kararlarin kaynagidir.
+        """
+        day = time.strftime("%Y-%m-%d", time.gmtime(now / 1000))
+        if self._last_report_day == day:
+            return
+        if not self._last_report_day:      # ilk dongu, gecmis gun yok
+            self._last_report_day = day
+            return
+        self._last_report_day = day
+        try:
+            self.notifier.send(self.daily_report(now))
+        except Exception:
+            log.warning("Gunluk rapor gonderilemedi", exc_info=True)
+
+    def daily_report(self, now: int) -> str:
+        """Duz Turkce gunluk ozet. Teknik terim yok, aksiyon varsa yazili."""
+        from .health import CRITICAL, WARN, run_health_checks
+
+        st = self.store.stats()
+        equity = self.broker.equity()
+        rs = self.guard.state
+        lines = [f"GUNLUK OZET - {time.strftime('%d.%m.%Y', time.gmtime(now/1000))}",
+                 "", f"Bakiye: {equity:.2f} USDT"]
+
+        if st.get("trades", 0):
+            lines.append(f"Toplam {st['trades']} islem | isabet %{st['win_rate']:.0f} "
+                         f"| net {st['net_pnl']:+.2f}")
+        else:
+            lines.append("Henuz kapanmis islem yok.")
+
+        pos = self.broker.positions()
+        lines.append(f"Acik pozisyon: {len(pos)}" +
+                     (f" ({', '.join(pos)})" if pos else ""))
+
+        if rs.shadow_mode:
+            lines += ["", "DURUM: GOLGE MODU (para riske atilmiyor)",
+                      rs.shadow_reason, self.shadow.report(),
+                      "Kanit geri gelirse bot kendiliginden canliya doner."]
+        elif rs.halted:
+            lines += ["", f"DURUM: bugun duruldu ({rs.halt_reason})",
+                      "Yarin kendiliginden acilir."]
+        else:
+            lines += ["", "DURUM: normal calisiyor"]
+
+        try:
+            rep = run_health_checks(self.cfg, self.store, self.learner,
+                                    self.broker, now)
+            issues = [c for c in rep.checks if c.severity in (CRITICAL, WARN)]
+            if issues:
+                lines.append("")
+                for c in issues:
+                    lines.append(f"[{c.severity.upper()}] {c.message}")
+                    if c.action:
+                        lines.append(f"  YAP: {c.action}")
+            else:
+                lines.append("Kontroller: her sey yolunda, yapman gereken bir sey yok.")
+        except Exception:
+            log.warning("Rapor icin saglik kontrolu basarisiz", exc_info=True)
+        return "\n".join(lines)
 
     def _maybe_health_check(self, now: int) -> None:
         """Periyodik kendini denetleme.
@@ -121,13 +192,61 @@ class TradingEngine:
             elif c.severity == WARN:
                 log.warning("SAGLIK [%s] %s", c.name, c.message)
 
-        if rep.halt_required and hc.halt_on_dead_edge and not self.guard.state.halted:
-            self.guard.state.halted = True
-            self.guard.state.halt_reason = "saglik kontrolu: " + rep.halt_reason
-            self.store.save_risk_state(self.guard.state)
-            log.error("BOT DURDURULDU: %s", rep.halt_reason)
+        if rep.halt_required and not self.guard.state.shadow_mode:
+            if self.cfg.shadow.enabled:
+                # Durup insani beklemek otonom degil. Golge modunda bot
+                # calismaya devam eder, para riske atmaz ve kanit geri
+                # gelirse kendiliginden canliya doner.
+                self._enter_shadow(rep.halt_reason, now)
+            elif hc.halt_on_dead_edge and not self.guard.state.halted:
+                self.guard.state.halted = True
+                self.guard.state.halt_reason = "saglik kontrolu: " + rep.halt_reason
+                self.store.save_risk_state(self.guard.state)
+                log.error("BOT DURDURULDU: %s", rep.halt_reason)
 
         self._alert(rep, now)
+
+    def _enter_shadow(self, reason: str, now: int) -> None:
+        """Canli islemi durdur, kagit uzerinde devam et."""
+        st = self.guard.state
+        st.shadow_mode = True
+        st.shadow_since_ms = now
+        st.shadow_reason = reason
+        self.store.save_risk_state(st)
+        self.shadow.enter(reason, now)
+        for symbol, pos in list(self.broker.positions().items()):
+            trade = self.broker.close_position(symbol, 1.0, pos.tp2, "golge-moduna-gecis")
+            if trade:
+                self._on_trade_closed(trade, now)
+        if self.cfg.shadow.notify_on_transition:
+            self.notifier.send(
+                "GOLGE MODUNA GECILDI\n\n"
+                f"{reason}\n\n"
+                "Bot durmadi. Sinyal uretmeye ve islem yapmaya devam ediyor "
+                "ama PARA RISKE ATILMIYOR. Acik pozisyonlar kapatildi.\n\n"
+                f"Golgede {self.cfg.shadow.min_trades_to_resume} sanal islemde "
+                "beklentinin pozitif oldugu kanitlanirsa kendiliginden canliya "
+                "doner. Senin bir sey yapmana gerek yok."
+            )
+
+    def _maybe_resume_live(self, now: int) -> None:
+        """Golge performansi kanit uretti mi? Uretti ise canliya don."""
+        ok, why = self.shadow.should_resume()
+        log.info("[GOLGE] donus kontrolu: %s", why)
+        if not ok:
+            return
+        st = self.guard.state
+        st.shadow_mode = False
+        st.shadow_reason = ""
+        st.halted = False
+        st.halt_reason = ""
+        self.store.save_risk_state(st)
+        self.shadow.state.resumed_count += 1
+        self.shadow.save()
+        log.warning("CANLIYA DONULDU: %s", why)
+        if self.cfg.shadow.notify_on_transition:
+            self.notifier.send(f"CANLIYA DONULDU\n\n{why}\n\n"
+                               "Bot gercek islem yapmaya devam ediyor.")
 
     def _alert(self, rep, now: int) -> None:
         """Bildirim gonderir ama spam yapmaz: ayni uyari gunde bir kez."""
@@ -159,14 +278,24 @@ class TradingEngine:
             self._manage(pos, last, feats, now)
             return
 
+        shadow_on = self.guard.state.shadow_mode and self.cfg.shadow.enabled
+
+        # Golge modunda sanal pozisyonlar da yonetilmeli -- yoksa olcum durur
+        if shadow_on and self.shadow.has_position(symbol):
+            r = self.shadow.update(symbol, last, feats.atr[-1] or 0.0, now)
+            if r is not None:
+                self._maybe_resume_live(now)
+            return
+
         # Ayni mumda birden fazla giris denemesi yok
         if self._last_bar.get(symbol) == last.open_time:
             return
 
-        allowed, why = self.guard.can_open(now, len(self.broker.positions()), equity)
-        if not allowed:
-            log.debug("%s: giris kapali (%s)", symbol, why)
-            return
+        if not shadow_on:
+            allowed, why = self.guard.can_open(now, len(self.broker.positions()), equity)
+            if not allowed:
+                log.debug("%s: giris kapali (%s)", symbol, why)
+                return
 
         sig = self.strategy.evaluate(symbol, closed, feats)
         if not sig:
@@ -187,6 +316,11 @@ class TradingEngine:
             log.info("%s sinyal elendi: %s", symbol, reason)
             return
         if not self._microstructure_ok(symbol, now):
+            return
+
+        # --- Golge modu: sinyal gercek, emir sanal ---
+        if shadow_on:
+            self.shadow.open(sig, now)
             return
 
         filters = self.market.filters(symbol)

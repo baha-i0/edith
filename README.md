@@ -291,6 +291,83 @@ karar alinmadi -- hepsi gorunur.
 
 ---
 
+## Otonomi: bot neye kendi karar verir
+
+Bot **tam otonom** calisir. Insan sadece kurar ve gozlemler.
+
+**Kendi karar verdikleri:**
+hangi sembol, hangi yon, pozisyon buyuklugu, kaldirac, giris zamani,
+kismi kar alma, stop tasima, cikis zamani, gunluk kendini durdurma,
+sembol banklama, stop kalibrasyonu, golge moduna gecis ve donus.
+
+**Kasten kendi degistirmedigi:** stratejisi ve ana parametreleri.
+Serbest birakildiginda beklenti +0.088R'den +0.041R'ye dusuyor (olculdu).
+
+### Servis olarak kurulum
+
+```bash
+python -m bot install --mode paper
+```
+
+Isletim sistemine gore dogru dosyayi uretir (systemd / launchd / Task
+Scheduler) ve calistirilacak iki komutu yazar.
+
+| Olay | Sonuc |
+|---|---|
+| Makine yeniden baslar | Bot kendiliginden acilir |
+| Bot coker | 30 saniye icinde toparlanir |
+| Internet keser | Baglanti gelince devam eder |
+| Oturum kapanir | Calismaya devam eder (linger) |
+| Bilgisayar tamamen kapanir | Koruma emirleri borsada durmaya devam eder |
+
+### Golge modu: edge olurse ne olur
+
+Uc secenek vardi:
+
+| Secenek | Sorun |
+|---|---|
+| Dur ve insani bekle | Otonom degil; insan uyuyorsa sistem oludur |
+| Parametreleri yeniden ayarla | Bozulmayi gizler; olculdu, beklentiyi yariya dusuruyor |
+| **Golge modu** | Secilen |
+
+Edge'in oldugu kanitlanirsa (50+ islem, %99 anlamlilik) bot **durmaz**.
+Gercek pozisyonlari kapatir, sonra sinyal uretmeye ve kagit uzerinde islem
+yapmaya devam eder. Golgede 40 sanal islemde beklentinin pozitif oldugu
+kanitlanirsa **kendiliginden canliya doner.**
+
+Esikler asimetrik, kasten:
+
+```
+golgeye GECMEK icin  ->  beklentinin NEGATIF oldugu kanitlanmali
+canliya DONMEK icin  ->  beklentinin POZITIF oldugu kanitlanmali
+```
+
+Supheli durumda sermaye risk almaz. Golge sonuclarina gercek komisyon ve
+slipaj uygulanir -- yoksa iyimser olur ve yanlis karar verdirir.
+
+Olculen donus esikleri:
+
+| Golge performansi | n | ortalama | alt guven siniri | canliya doner mi |
+|---|---|---|---|---|
+| Hala kaybediyor | 60 | -1.00R | -1.275 | hayir |
+| Notr | 60 | +0.00R | -0.275 | hayir |
+| Hafif pozitif, dagilim genis | 50 | +0.10R | -0.385 | hayir |
+| Tutarli pozitif | 60 | +0.90R | +0.900 | **evet** |
+| Gercekci iyi seri | 50 | +0.60R | +0.054 | **evet** |
+
+Neden durmaktan iyi: **durmak bilgi uretmez.** Golge modu olcmeye devam
+eder. Neden yeniden optimize etmekten iyi: golge modu parametreleri
+degistirmez -- geri donus gercek bir sinavdir, gecmise uydurulmus bir
+parametre degil.
+
+### Gunluk rapor
+
+Bot gunde bir kez telefona ozet gonderir (Telegram kuruluysa). Patron
+rolu pasif: sen bota gitmezsin, o sana gelir. Surekli kar/zarar bildirimi
+yok -- o, kotu kararlarin kaynagi.
+
+---
+
 ## Kendini denetleme: "her sey yolunda mi?"
 
 Botu calistiran kisinin istatistik bilmesi gerekmiyor. Tek komut:
@@ -346,7 +423,8 @@ Bot ayrica saatte bir kendi kendine ayni kontrolu yapar; kritik bulguda
 Telegram'dan haber verir (ayni konudan gunde en fazla bir kez -- bildirim
 spami kotu kararlarin kaynagidir).
 
-**Programlama/istatistik bilmiyorsan:** `BASLA.md` dosyasi senin icin yazildi.
+**Programlama/istatistik bilmiyorsan:** `BASLA.md` dosyasi senin icin yazildi --
+kurulumdan sonra hicbir sey yapmayacagin bir isletim modeli anlatiyor.
 
 ---
 
@@ -408,7 +486,8 @@ Paper'da kar etmeyen bir kurulum canlida asla kar etmez.
 | Kalici durum | SQLite: limitler ve acik pozisyon restart'ta kaybolmaz |
 | Config dogrulama | Sinir disi ayar uyari degil **hata** verir, bot baslamaz |
 | Ogrenme tek yonlu | Ogrenme riski asla artiramaz (`max_risk_multiplier: 1.0`) |
-| Kendini denetleme | Edge'in oldugu KANITLANIRSA bot durur ve haber verir |
+| Kendini denetleme | Edge'in oldugu KANITLANIRSA golge moduna gecer, para riske atmaz |
+| Otomatik toparlanma | Cokerse 30 sn icinde yeniden baslar, durumu SQLite'tan yukler |
 | Hata defteri | Tekrarlayan operasyonel hata sembolu gecici devre disi birakir |
 
 Bot **kendisine ait olmayan** acik pozisyonlara dokunmaz.
@@ -426,7 +505,9 @@ bot/
   backtest.py     tek sembol + portfoy backtesti
   engine.py       canli/paper dongu (broker arayuzune karsi calisir)
   learning.py     ogrenme katmani (istatistiksel kapilar + hata defteri)
-  health.py       kendini denetleme (bozulunca DUR ve haber ver)
+  health.py       kendini denetleme (bozulmayi kanitla yakalar)
+  shadow.py       golge modu (edge olurse para riske atmadan devam et)
+  service.py      systemd / launchd / Task Scheduler servis kurulumu
   state.py        SQLite kalici durum
   archive.py      data.binance.vision gecmis veri
   exchange/
@@ -455,7 +536,7 @@ sinyali. Cikis: %50'si 1R'de (islem bedava hale gelir), kalani 4R'de veya
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest tests/ -q      # 133 test
+python -m pytest tests/ -q      # 154 test
 ```
 
 Testler sadece "calisiyor mu"yu degil, **kaybetmeyi reddediyor mu**yu de

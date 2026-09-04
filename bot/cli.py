@@ -224,6 +224,26 @@ def cmd_status(args) -> int:
     return 0
 
 
+# ------------------------------------------------------------------- install
+def cmd_install(args) -> int:
+    """Botu isletim sistemi servisi olarak kurar: acilista baslar, cokerse toparlar."""
+    cfg = _load(args)
+    from .service import install
+
+    mode = args.mode or "paper"
+    if mode == "live":
+        print("\n" + "!" * 62)
+        print("Servisi GERCEK PARA modunda kuruyorsun.")
+        print("Bot makine her acildiginda kendiliginden baslayacak ve")
+        print("sen uyurken de islem yapacak.")
+        print("!" * 62)
+        if input("Devam etmek icin 'ANLADIM' yaz: ").strip() != "ANLADIM":
+            print("Iptal edildi.")
+            return 1
+    print(install(mode))
+    return 0
+
+
 # -------------------------------------------------------------------- doctor
 def cmd_doctor(args) -> int:
     """'Her sey yolunda mi?' -- duz Turkce cevap, istatistik bilmek gerekmez."""
@@ -318,6 +338,12 @@ def build_parser() -> argparse.ArgumentParser:
         r.add_argument("--symbol")
         r.add_argument("--timeframe")
         r.set_defaults(func=lambda a, m=mode: cmd_run(a, m))
+
+    i = sub.add_parser("install", help="servis olarak kur (acilista baslasin, "
+                                       "cokerse toparlasin)")
+    i.add_argument("--mode", choices=("paper", "testnet", "live"), default="paper")
+    i.add_argument("--symbol")
+    i.set_defaults(func=cmd_install)
 
     d = sub.add_parser("doctor", help="her sey yolunda mi? (duz Turkce rapor)")
     d.add_argument("--mode", help="paper/testnet/live")

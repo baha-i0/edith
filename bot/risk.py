@@ -127,6 +127,13 @@ class RiskState:
     day_start_equity: float = 0.0
     halted: bool = False
     halt_reason: str = ""
+    # Golge modu: bot islem yapmaya DEVAM eder ama para riske atmaz.
+    # Edge oldugunda "durup insani bekle" yerine kullanilir -- boylece
+    # sistem otonom kalir, sermaye korunur ve kanit geri gelirse
+    # kendiliginden canliya doner.
+    shadow_mode: bool = False
+    shadow_since_ms: int = 0
+    shadow_reason: str = ""
 
 
 class RiskGuard:
