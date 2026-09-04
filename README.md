@@ -126,16 +126,20 @@ gibi davranir. Gercek sayi bu:
 
 ```
 Sure             : 4.9 yil
-Equity           : 200.00 -> 375.32 (+87.7%)
-Yillik bilesik   : +13.6%
-Islem            : 334  (68/yil)
-Isabet / PF      : %54.5 / 1.58
-Beklenti         : +0.277 R/islem
+Equity           : 200.00 -> 406.03 (+103.0%)
+Yillik bilesik   : +15.4%
+Islem            : 358  (72/yil)
+Isabet / PF      : %54.7 / 1.60
+Beklenti         : +0.285 R/islem
 Maks. dusus      : 14.1%
-t-degeri (kaba)  : 4.11
+t-degeri (kaba)  : 4.40
 ```
 
-Genislik filtresinden ONCE ve SONRA:
+Bu rakamlar `config.example.yaml`'in **sevk edilen** hali icindir
+(post_only giris dahil). Asagidaki iki tablo tek tek OZELLIK olcumleridir:
+her biri sadece o ozelligi acip kapatir, digerleri sabit kalir.
+
+Genislik filtresinden ONCE ve SONRA (ikisi de market giris):
 
 | | eski | yeni | fark |
 |---|---|---|---|
@@ -156,7 +160,7 @@ kotulesiyor** (0.45 -> 0.41). Yani o sadece kaldirac, iyilestirme degil.
 
 | donem              | yil | islem | yillik | beklenti | t    |
 |--------------------|-----|-------|--------|----------|------|
-| tamami             | 4.9 | 358   | +14.8% | +0.277   | 4.11 |
+| tamami             | 4.9 | 358   | +15.4% | +0.285   | 4.40 |
 | ilk yari           | 2.4 | 162   | +21.4% | +0.401   | 4.03 |
 | ikinci yari (OOS)  | 2.5 | 192   | +10.2% | +0.188   | 2.31 |
 | son 1.5 yil (OOS)  | 1.5 | 125   | +6.3%  | +0.114   | 1.03 |
@@ -258,7 +262,7 @@ Ikinci yari (2023-26, boga piyasasi icermeyen daha temsili donem):
 | taban yok, risk %0.75 (varsayilan) | +9.1% | 28.9% |
 | taban 170$ sabit, yastigin %4'u | +18.3% | 61.8% |
 | taban 170$ sabit, yastigin %6'si | +15.1% | 69.3% |
-| **cirpinan %70, yastigin %6'si** | **+19.3%** | **48.4%** |
+| **cirpinan %70, yastigin %6'si** | **+19.1%** | **48.3%** |
 
 Cirpinan taban ikinci yaride **her iki olcutte de** kazandi: en yuksek
 getiri ve taban secenekleri icinde en dusuk dusus.
@@ -852,6 +856,53 @@ Ogrenme katmaninda en kritik testler "ogreniyor mu" degil **erken ogrenmiyor
 mu**: 29 ardisik zarar bile esigin altindaysa karar aldirmamali, yuksek
 varyansli zarar serisi bank tetiklememeli, yanlis bank orani simulasyonla
 %3'un altinda kalmali.
+
+---
+
+## Bagimsiz denetim (2026-09-04)
+
+Kod ve dokumanlar bastan denetlendi. Bulunan yedi sorun ve durumu:
+
+| # | bulgu | etki | durum |
+|---|-------|------|-------|
+| 1 | `/kapat` bekleyen limit emirlerini iptal etmiyordu | "her sey kapandi" dedikten dakikalar sonra YENI pozisyon acilabilirdi | duzeltildi |
+| 2 | Golge modu da iptal etmiyordu | "para riske atma" modunda gercek pozisyon acilabilirdi | duzeltildi |
+| 3 | Gunluk zarar limiti bekleyen emri iptal etmiyordu | "bot bugun durdu" derken pozisyon acilabilirdi | duzeltildi |
+| 4 | `update_floor` backtest'te sadece giris aninda, canlida her donguda | backtest cirpinan tabani oldugundan az kisitlayici olcuyordu | duzeltildi |
+| 5 | Cirpinan taban gerceklesmemis kar uzerinden yukseliyordu | acik pozisyonun anlik tepesi tabani kalici kilitleyip botu felc edebilirdi | duzeltildi |
+| 6 | Ogrenme carpani dogrulanan risk tavanini asabiliyordu | config "%6" diyor, runtime %9 uygulayabiliyordu | duzeltildi |
+| 7 | Panel ve saglik kontrolu tabani hic gostermiyordu | yastik bitince bot SESSIZCE duruyordu | duzeltildi |
+
+4 numaranin sonuca etkisi olculdu: cirpinan taban +%19.3 -> **+%19.1**
+(dusus %48.4 -> %48.3). Hata gercekti, sonuc degismedi.
+
+Her bulgu icin regresyon testi yazildi (`tests/test_floor.py`,
+`tests/test_execution.py`, `tests/test_health.py`, `tests/test_dashboard.py`
+icindeki "denetim bulgulari" bolumleri).
+
+### Guvenlik taramasi
+
+Ayri bir guvenlik incelemesi yapildi (enjeksiyon, kimlik dogrulama,
+sir yonetimi, kod calistirma, veri sizintisi). **Esigi gecen bulgu yok.**
+Dogrulananlar: SQL sorgulari parametreli, `yaml.safe_load`, `eval`/`exec`/
+`pickle`/`shell=True` yok, HMAC imzalama dogru, token karsilastirmasi
+`hmac.compare_digest`, panelde XSS yok (serbest metin `textContent`'ten
+geciyor), Telegram `chat_id` kapisi `channel_post` gibi diger guncelleme
+tiplerine kapali.
+
+Iki sertlestirme yine de uygulandi, cunku ikisi de dokumandaki bir iddiayi
+zayiflatiyordu:
+
+- **Host basligi dogrulamasi.** Uzaktaki bir site kendi alan adini
+  127.0.0.1'e cozdurup tarayiciyla panele istek attirabilirdi (DNS
+  rebinding). Baglanti gercekten localhost'tan geldigi icin IP kontrolu
+  bunu yakalamaz. "Panel yalniz bu bilgisayardan gorulur" sozunun gecerli
+  olmasi icin Host basligi artik dogrulaniyor.
+- **Token log'a yazilmiyor.** Panel token'i sorgu dizesinde kabul ediyor
+  (tarayiciden erisim icin); DEBUG seviyesinde bu `logs/bot.log`'a
+  yaziliyordu. Artik maskeleniyor.
+
+---
 
 ## Bilinen sinirlar
 

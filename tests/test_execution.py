@@ -257,3 +257,38 @@ def test_ag_hatasi_botu_durdurmaz(monkeypatch):
 
     monkeypatch.setattr("bot.notify.requests.get", patla)
     assert n.poll_commands() == []
+
+
+# ============================================================ denetim bulgulari
+def test_acil_kapatma_bekleyen_emirleri_de_IPTAL_eder(tmp_path):
+    """Pozisyonlari kapatip tahtadaki limiti birakmak, kullanici 'her sey
+    kapandi' sanirken dakikalar sonra yeni pozisyon acilmasi demektir."""
+    cfg, market, broker, _ = _broker(tmp_path, [100.0] * 10)
+    broker.open_position(_sig(100.0), qty=1.0, leverage=3)
+    assert broker.pending_entries() != {}
+    assert broker.cancel_pending() == 1
+    assert broker.pending_entries() == {}
+    # iptal kalici olmali: yeniden baslatmada geri gelmemeli
+    yeni = PaperBroker(cfg, market, broker.store)
+    assert yeni.pending_entries() == {}
+
+
+def test_cancel_pending_bos_durumda_sifir_doner(tmp_path):
+    _cfg, _m, broker, _ = _broker(tmp_path, [100.0] * 10)
+    assert broker.cancel_pending() == 0
+
+
+def test_realized_equity_kagit_kari_SAYMAZ(tmp_path):
+    """Cirpinan taban bunun uzerinden hesaplanir: acik pozisyonun anlik
+    kari zirve sayilirsa, hic bankaya girmemis paraya gore taban kilitlenir."""
+    cfg, market, broker, _ = _broker(tmp_path, [100.0] * 10,
+                                     entry_order_type="market")
+    baslangic = broker.realized_equity()
+    broker.open_position(_sig(100.0), qty=1.0, leverage=3)
+    # fiyat lehte hareket etti -> equity artar, realized_equity artmaz
+    market.all = make_candles([100.0] * 9 + [130.0], step_ms=14_400_000)
+    market.cursor = len(market.all)
+    assert broker.equity() > broker.realized_equity()
+    # komisyon disinda gerceklesmis bakiye degismemis olmali
+    assert broker.realized_equity() < baslangic          # sadece komisyon dustu
+    assert baslangic - broker.realized_equity() < 1.0

@@ -102,7 +102,11 @@ class TradingEngine:
         # Cirpinan taban: zirve yukseldiyse taban da yukselir ve bir daha
         # dusmez. Once bunu yap -- boyutlandirma gecerli tabani gormeli.
         onceki = self.guard.state.floor_usdt
-        yeni = update_floor(self.cfg.risk, self.guard.state, equity)
+        # Taban GERCEKLESMIS bakiye uzerinden cirpinir. Acik pozisyonun
+        # kagit uzerindeki kari zirve saydirilirsa, hic bankaya girmemis
+        # bir paraya gore taban kilitlenir ve bot felc olur.
+        yeni = update_floor(self.cfg.risk, self.guard.state,
+                            self.broker.realized_equity())
         if yeni > onceki > 0:
             log.info("Taban yukseldi: %.2f -> %.2f USDT (zirve %.2f)",
                      onceki, yeni, self.guard.state.peak_equity)
@@ -112,6 +116,18 @@ class TradingEngine:
         if isinstance(self.broker, LiveBroker):
             for trade in self.broker.reconcile():
                 self._on_trade_closed(trade, now)
+
+        # Gun durdurulduysa (zarar limiti / kar hedefi) ya da sahibi
+        # durdurduysa, tahtadaki emirler de iptal edilir. Aksi halde
+        # "bot bugun durdu" derken bir limit dolup YENI pozisyon acar.
+        st = self.guard.state
+        if (st.halted or st.paused) and self.broker.pending_entries():
+            try:
+                n = self.broker.cancel_pending()
+                if n:
+                    log.info("Gun durduruldu -> %d bekleyen giris emri iptal", n)
+            except Exception:
+                log.exception("Durdurma sirasinda bekleyen emirler iptal edilemedi")
 
         # Tahtada bekleyen maker giris emirleri: dolan var mi?
         # Slot sayaci ancak emir DOLDUGUNDA artar; bekleyen emirler
@@ -315,6 +331,13 @@ class TradingEngine:
         st.shadow_reason = reason
         self.store.save_risk_state(st)
         self.shadow.enter(reason, now)
+        # Golge modu "gercek para riske atma" demek. Tahtada duran bir
+        # limit emri dolarsa GERCEK pozisyon acilir ve golge modunun tum
+        # anlami kaybolur.
+        try:
+            self.broker.cancel_pending()
+        except Exception:
+            log.exception("Golgeye gecerken bekleyen emirler iptal edilemedi")
         for symbol, pos in list(self.broker.positions().items()):
             trade = self.broker.close_position(symbol, 1.0, pos.tp2, "golge-moduna-gecis")
             if trade:
@@ -437,6 +460,14 @@ class TradingEngine:
                     if p.initial_risk_per_unit and p.initial_qty else 0.0
                 lines.append(f"  {sym} {p.side} @ {p.entry_price:.4f} -> {px:.4f}  "
                              f"{pnl:+.2f} USDT ({rmult:+.2f}R)  stop {p.stop:.4f}")
+        floor = effective_floor(self.cfg.risk, rs)
+        if floor > 0:
+            yastik = max(0.0, eq - floor)
+            lines.append(f"\nTaban: {floor:.2f} korunuyor | yastik: {yastik:.2f}")
+            if yastik < self.cfg.risk.min_cushion_usdt:
+                lines.append("YASTIK TUKENDI - bot yeni islem ACMIYOR. "
+                             "Para eklemeden islem baslamaz.")
+
         pend = self.broker.pending_entries()
         if pend:
             lines.append(f"\nTahtada bekleyen giris: {', '.join(pend)}")
@@ -454,11 +485,19 @@ class TradingEngine:
         st.paused = True
         self.store.save_risk_state(st)
         log.warning("[KOMUT] Sahibin talebiyle yeni islem acma DURDURULDU")
+        # Tahtada bekleyen limit emri de bir GIRIStir: birakilirsa "yeni
+        # islem acma" talimatina ragmen pozisyon acar.
+        try:
+            iptal = self.broker.cancel_pending()
+        except Exception:
+            log.exception("Bekleyen emirler iptal edilemedi")
+            iptal = 0
         n = len(self.broker.positions())
         return ("Yeni islem acma DURDURULDU.\n\n"
                 f"Acik {n} pozisyon oldugu gibi devam ediyor; borsadaki stop ve "
                 "hedef emirleri yerinde. Hepsini simdi kapatmak istersen /kapat.\n"
-                "Tekrar acmak icin /devam.")
+                + (f"Tahtada bekleyen {iptal} giris emri iptal edildi.\n" if iptal else "")
+                + "Tekrar acmak icin /devam.")
 
     def _cmd_devam(self) -> str:
         st = self.guard.state
@@ -479,6 +518,15 @@ class TradingEngine:
         st = self.guard.state
         st.paused = True
         self.store.save_risk_state(st)
+        # SIRA ONEMLI: once tahtadaki bekleyen emirleri iptal et, sonra
+        # pozisyonlari kapat. Ters sirada, kapatma ile iptal arasindaki
+        # saniyelerde bir limit dolup YENI pozisyon acabilir -- kullanici
+        # her sey kapandi sanirken.
+        iptal = 0
+        try:
+            iptal = self.broker.cancel_pending()
+        except Exception:
+            log.exception("Bekleyen emirler iptal edilemedi")
         closed, failed = [], []
         for symbol, pos in list(self.broker.positions().items()):
             try:
@@ -496,6 +544,8 @@ class TradingEngine:
                     len(closed), len(failed))
         out = ["ACIL KAPATMA yapildi. Bot ayrica DURDURULDU."]
         out.append(f"Kapanan: {', '.join(closed) if closed else 'yok'}")
+        if iptal:
+            out.append(f"Iptal edilen bekleyen emir: {iptal}")
         if failed:
             out.append(f"KAPATILAMAYAN: {', '.join(failed)}\n"
                        "Bunlari Binance uygulamasindan elle kontrol et.")

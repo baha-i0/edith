@@ -154,3 +154,53 @@ def test_config_rejects_trigger_happy_health_settings():
     c.health.min_trades_for_edge_check = 10
     with pytest.raises(ConfigError, match="min_trades_for_edge_check"):
         c.validate()
+
+
+# ============================================================ denetim bulgusu
+def test_yastik_tukenince_saglik_kontrolu_SESSIZ_KALMAZ(tmp_path):
+    """Taban aktifken bot yastik bitince sessizce durur: hata yok, uyari yok,
+    sadece hicbir islem acilmaz. Sessiz durma gorunur olmali."""
+    from bot.config import Config
+    from bot.health import CRITICAL, run_health_checks
+    from bot.state import Store
+
+    cfg = Config()
+    cfg.risk.capital_floor_usdt = 170.0
+    cfg.risk.min_cushion_usdt = 25.0
+    store = Store(str(tmp_path / "c.db"), mode="paper")
+
+    class B:
+        def __init__(self, eq):
+            self._eq = eq
+
+        def equity(self):
+            return self._eq
+
+        def positions(self):
+            return {}
+
+    rep = run_health_checks(cfg, store, None, B(180.0))
+    cek = [c for c in rep.checks if c.name == "Sermaye tabani"]
+    assert cek, "taban kontrolu hic calismadi"
+    assert cek[0].severity == CRITICAL
+    assert "yeni islem ACMIYOR" in cek[0].message
+    assert cek[0].action
+
+
+def test_taban_kapaliyken_kontrol_gurultu_YAPMAZ(tmp_path):
+    from bot.config import Config
+    from bot.health import run_health_checks
+    from bot.state import Store
+
+    cfg = Config()
+    store = Store(str(tmp_path / "d.db"), mode="paper")
+
+    class B:
+        def equity(self):
+            return 300.0
+
+        def positions(self):
+            return {}
+
+    rep = run_health_checks(cfg, store, None, B())
+    assert not [c for c in rep.checks if c.name == "Sermaye tabani"]

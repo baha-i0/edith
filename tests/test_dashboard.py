@@ -268,3 +268,35 @@ def test_gecersiz_port_reddedilir():
     cfg.dashboard.port = 80
     with pytest.raises(ConfigError):
         cfg.validate()
+
+
+# ============================================================ denetim bulgulari
+def test_yabanci_Host_basligi_REDDEDILIR(server):
+    """DNS rebinding: uzaktaki bir site kendi alan adini 127.0.0.1'e
+    cozdurup tarayiciyla bu sunucuya istek attirabilir. Baglanti gercekten
+    localhost'tan gelir, o yuzden IP kontrolu yakalamaz -- Host yakalar."""
+    import http.client
+    _srv, url = server
+    port = int(url.rsplit(":", 1)[1])
+    for host, beklenen in [("evil.example.com", 403),
+                           ("attacker.local:1234", 403),
+                           ("127.0.0.1:%d" % port, 200),
+                           ("localhost:%d" % port, 200),
+                           ("127.0.0.1", 200)]:
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        c.putrequest("GET", "/api/state", skip_host=True, skip_accept_encoding=True)
+        c.putheader("Host", host)
+        c.endheaders()
+        assert c.getresponse().status == beklenen, f"Host={host}"
+        c.close()
+
+
+def test_Host_basligi_yoksa_reddedilir(server):
+    import http.client
+    _srv, url = server
+    port = int(url.rsplit(":", 1)[1])
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    c.putrequest("GET", "/", skip_host=True, skip_accept_encoding=True)
+    c.endheaders()
+    assert c.getresponse().status == 403
+    c.close()

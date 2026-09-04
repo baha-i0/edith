@@ -30,6 +30,7 @@ from typing import Any, Dict, List, Optional
 
 from .config import Config
 from .models import LONG
+from .risk import effective_floor, open_risk_total
 
 log = logging.getLogger(__name__)
 
@@ -95,6 +96,38 @@ def _streak(rs: List[float]) -> int:
             break
         n += 1
     return n * sign
+
+
+def _floor_state(cfg: Config, risk, equity: float, engine) -> Optional[Dict[str, Any]]:
+    """Sermaye tabani paneli. Taban kapaliysa None.
+
+    Panelin bunu gostermesi sart: taban aktifken bot yastik tukendiginde
+    SESSIZCE durur. Gorunmezse kullanici "neden islem yapmiyor" diye
+    saatlerce bakar.
+    """
+    floor = effective_floor(cfg.risk, risk)
+    if floor <= 0:
+        return None
+    cushion = max(0.0, equity - floor)
+    acik = 0.0
+    if engine is not None:
+        try:
+            acik = open_risk_total(engine.broker.positions().values())
+        except Exception:
+            acik = 0.0
+    tavan = cushion * cfg.risk.max_total_risk_pct_of_cushion / 100.0
+    return {
+        "floor": floor,
+        "fixed_floor": cfg.risk.capital_floor_usdt,
+        "ratchet_pct": cfg.risk.capital_floor_ratchet_pct,
+        "peak_equity": risk.peak_equity,
+        "cushion": cushion,
+        "min_cushion": cfg.risk.min_cushion_usdt,
+        "cushion_pct": (cushion / equity * 100) if equity > 0 else 0.0,
+        "open_risk": acik,
+        "risk_cap": tavan,
+        "exhausted": cushion < cfg.risk.min_cushion_usdt,
+    }
 
 
 def build_state(cfg: Config, store, engine=None) -> Dict[str, Any]:
@@ -205,6 +238,7 @@ def build_state(cfg: Config, store, engine=None) -> Dict[str, Any]:
             "peak_drawdown_pct": worst_dd,
             "current_drawdown_pct": dd[-1] if dd else 0.0,
         },
+        "floor": _floor_state(cfg, risk, equity, engine),
         "risk": {
             "trades_today": risk.trades_today,
             "max_trades": cfg.risk.max_trades_per_day,
@@ -276,6 +310,26 @@ class _Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
+    def _host_ok(self) -> bool:
+        """Host basligi bu sunucuya mi ait?
+
+        DNS rebinding: uzaktaki bir site, kendi alan adini 127.0.0.1'e
+        cozdurup tarayicidan bu sunucuya istek attirabilir. Baglanti
+        gercekten localhost'tan gelir, yani IP kontrolu bunu yakalamaz --
+        ama Host basligi saldirganin alan adini tasir. "Panel yalniz bu
+        bilgisayardan gorulur" sozunun gecerli olmasi icin gereken kontrol.
+        """
+        host = (self.headers.get("Host") or "").strip().lower()
+        if not host:
+            return False
+        name = host.rsplit(":", 1)[0] if not host.startswith("[") else \
+            host.split("]")[0] + "]"
+        izin = {"127.0.0.1", "localhost", "[::1]", "::1"}
+        cfg_host = getattr(self.server, "allowed_host", "")
+        if cfg_host:
+            izin.add(str(cfg_host).lower())
+        return name in izin
+
     def _authorized(self) -> bool:
         token = os.getenv("DASHBOARD_TOKEN", "")
         if not token:
@@ -291,6 +345,9 @@ class _Handler(BaseHTTPRequestHandler):
 
     # ---- yollar
     def do_GET(self) -> None:  # noqa: N802
+        if not self._host_ok():
+            self._send(403, b"gecersiz Host basligi", "text/plain; charset=utf-8")
+            return
         if not self._authorized():
             self._send(401, b"yetkisiz", "text/plain; charset=utf-8")
             return
@@ -317,7 +374,13 @@ class _Handler(BaseHTTPRequestHandler):
     do_PUT = do_DELETE = do_PATCH = do_POST
 
     def log_message(self, fmt: str, *args) -> None:
-        log.debug("[panel] " + fmt, *args)
+        # Token sorgu dizesinde gelebiliyor (tarayicidan erisim icin).
+        # Yolu oldugu gibi loglamak onu logs/bot.log'a yazar.
+        temiz = tuple(
+            a.split("token=")[0] + "token=***" if isinstance(a, str) and "token=" in a
+            else a for a in args
+        )
+        log.debug("[panel] " + fmt, *temiz)
 
 
 class DashboardServer:
@@ -347,6 +410,7 @@ class DashboardServer:
                         d.host, d.port, exc)
             return False
         httpd.state_fn = self.state_fn  # type: ignore[attr-defined]
+        httpd.allowed_host = d.host  # type: ignore[attr-defined]
         httpd.daemon_threads = True
         self._httpd = httpd
         self._thread = threading.Thread(target=httpd.serve_forever,
@@ -446,6 +510,17 @@ tbody tr:hover{background:var(--panel2)}
 pre{font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;margin:0;
   color:var(--dim);line-height:1.6}
 .empty{color:var(--faint);font-size:12px;padding:14px 0;text-align:center}
+.floorwrap{margin-bottom:14px}
+.floorbar{display:flex;height:22px;border-radius:4px;overflow:hidden;
+  border:1px solid var(--line);background:var(--panel2)}
+.floorbar>span{display:block}
+.floorbar .lock{background:var(--accent);opacity:.32}
+.floorbar .cush{background:var(--warn);opacity:.55}
+.floorlegend{display:flex;flex-wrap:wrap;gap:16px;margin-top:8px;
+  font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
+.sw.lock{background:var(--accent);opacity:.32}
+.sw.cush{background:var(--warn);opacity:.55}
 svg{display:block;width:100%}
 .ro{font-size:11px;color:var(--faint);border-top:1px solid var(--line);
   margin-top:22px;padding-top:14px;line-height:1.7}
@@ -465,6 +540,11 @@ svg{display:block;width:100%}
   <section>
     <h2>Bakiye egrisi</h2>
     <div id="eqchart"></div>
+  </section>
+
+  <section id="floorBox" hidden>
+    <h2>Sermaye tabani</h2>
+    <div id="floor"></div>
   </section>
 
   <section>
@@ -639,6 +719,38 @@ function render(d){
       s.streak>0?"kazanc":"kayip",cls(s.streak)),
     K("KOMISYON",F(s.fees)+" $","toplam odenen","dim"),
   );
+
+  /* sermaye tabani */
+  const fb=document.getElementById("floorBox");
+  if(!d.floor){ fb.hidden=true; }
+  else{
+    fb.hidden=false;
+    const fl=d.floor;
+    const kullanilan=fl.cushion>0?Math.min(100,fl.open_risk/fl.risk_cap*100):100;
+    const oran=a.equity>0?Math.max(0,Math.min(100,fl.cushion/a.equity*100)):0;
+    document.getElementById("floor").replaceChildren(el("div",{html:`
+      <div class="floorwrap">
+        <div class="floorbar">
+          <span class="lock" style="width:${(100-oran).toFixed(1)}%"></span>
+          <span class="cush" style="width:${oran.toFixed(1)}%"></span>
+        </div>
+        <div class="floorlegend">
+          <span><i class="sw lock"></i>korunan ${F(fl.floor)}$</span>
+          <span><i class="sw cush"></i>riske atilabilir ${F(fl.cushion)}$</span>
+          <span class="dim">toplam ${F(a.equity)}$</span>
+        </div>
+      </div>`}),
+      table(["","deger","not"],[
+        ["Taban",{html:F(fl.floor)+" $"},
+         fl.ratchet_pct?`zirve ${F(fl.peak_equity)}$ x %${fl.ratchet_pct} (asla dusmez)`
+                        :"sabit"],
+        ["Yastik",{html:F(fl.cushion)+" $",cls:fl.exhausted?"down":"up"},
+         fl.exhausted?`TUKENDI (esik ${F(fl.min_cushion)}$) - bot yeni islem ACMIYOR`
+                     :`bakiyenin %${F(fl.cushion_pct,1)}'i`],
+        ["Acik risk",{html:F(fl.open_risk)+" $"},
+         `tavan ${F(fl.risk_cap)}$ - %${kullanilan.toFixed(0)} dolu`],
+      ]));
+  }
 
   document.getElementById("eqchart").replaceChildren(equityChart(d.equity));
   document.getElementById("hist").replaceChildren(histChart(d.histogram));

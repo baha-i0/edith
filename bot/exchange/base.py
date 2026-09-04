@@ -59,6 +59,26 @@ class Broker(ABC):
         """
         return []
 
+    def realized_equity(self) -> float:
+        """Gerceklesmis bakiye: acik pozisyonlarin kagit uzerindeki kari HARIC.
+
+        Cirpinan taban bunun uzerinden hesaplanir. Sebep: acik bir pozisyon
+        anlik olarak +%40 gosterip sonra geri verebilir. Taban o tepeye
+        gore yukselirse, hic bankaya girmemis bir paraya gore kilitlenmis
+        olur ve bot gercek parasinin ustunde bir tabanla felc olur.
+        """
+        return self.equity()
+
+    def cancel_pending(self) -> int:
+        """Tahtada bekleyen giris emirlerini iptal eder; kac tane oldugunu doner.
+
+        "Her seyi kapat" ve "golge moduna gec" gibi kararlar bunu CAGIRMAK
+        ZORUNDA: pozisyonlari kapatip bekleyen limitleri birakmak, kullanici
+        her sey kapandi sanirken dakikalar sonra yeni bir pozisyon acilmasi
+        demektir.
+        """
+        return 0
+
     def pending_entries(self) -> Dict[str, str]:
         """Tahtada bekleyen giris emirleri: sembol -> yon.
 

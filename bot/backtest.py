@@ -399,6 +399,19 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
     post_only = e.entry_order_type == "post_only"
 
     for ts in timeline:
+        # Taban her zaman adiminda guncellenir -- canli motor da her
+        # donguda yapiyor. Sadece islem acilirken guncellemek zirveleri
+        # kacirir ve cirpinan tabani oldugundan az kisitlayici olcerdi.
+        # backtest'te equity zaten gerceklesmis bakiye (acik pozisyonun
+        # kagit kari sayilmiyor), yani canlidaki realized_equity ile ayni.
+        update_floor(cfg.risk, guard.state, equity)
+
+        # Gun durdurulduysa bekleyen emirler de iptal edilir -- canli motor
+        # tam olarak bunu yapiyor (engine.tick). Burada yapmazsak backtest
+        # gunluk limitten SONRA da pozisyon acar ve canliyla ayrisir.
+        if guard.state.halted and pending:
+            pending.clear()
+
         # ---- 1) Bekleyen girisleri bu barin acilisinda doldur
         for sym in list(pending):
             i = idx[sym].get(ts)
@@ -450,7 +463,6 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
                 if mult != 1.0:
                     risk_cfg = replace(risk_cfg,
                                        risk_per_trade_pct=risk_cfg.risk_per_trade_pct * mult)
-            update_floor(risk_cfg, guard.state, equity)
             sizing = size_position(equity, equity, entry, sig.stop + drift, f,
                                    risk_cfg, cfg.account.leverage,
                                    open_risk=open_risk_total(positions.values()),

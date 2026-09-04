@@ -47,6 +47,9 @@ class PaperBroker(Broker):
                 pass
         return total
 
+    def realized_equity(self) -> float:
+        return self.balance
+
     def free_margin(self) -> float:
         used = sum(p.notional(p.entry_price) / p.leverage for p in self._positions.values())
         return max(0.0, self.balance - used)
@@ -56,6 +59,14 @@ class PaperBroker(Broker):
 
     def pending_entries(self) -> Dict[str, str]:
         return {sym: rec["side"] for sym, rec in self._pending.items()}
+
+    def cancel_pending(self) -> int:
+        n = len(self._pending)
+        self._pending.clear()
+        self.store.set_kv("paper_pending", self._pending)
+        if n:
+            log.info("[PAPER] %d bekleyen giris emri iptal edildi", n)
+        return n
 
     # ------------------------------------------------------------- islemler
     def _fill_price(self, symbol: str, side: str, is_entry: bool) -> float:

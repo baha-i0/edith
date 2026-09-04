@@ -89,6 +89,9 @@ def run_health_checks(cfg: Config, store, learner=None, broker=None,
     rep.checks.append(_check_drawdown(cfg, store, learner))
     rep.checks.append(_check_fee_drag(cfg, store))
     rep.checks.append(_check_positions(cfg, store, broker, now))
+    cek = _check_cushion(cfg, store, broker)
+    if cek is not None:
+        rep.checks.append(cek)
     if learner is not None:
         rep.checks.append(_check_operational_errors(learner, now))
 
@@ -101,6 +104,51 @@ def run_health_checks(cfg: Config, store, learner=None, broker=None,
 
 
 # --------------------------------------------------------------------- checks
+def _check_cushion(cfg: Config, store, broker) -> Optional["Check"]:
+    """Sermaye tabani yastigi. Taban kapaliysa kontrol yok.
+
+    Bu kontrol olmadan bot yastik tukendiginde SESSIZCE durur: hata yok,
+    uyari yok, sadece hicbir islem acilmaz. Kullanici gunlerce "neden
+    calismiyor" diye bakar. Sessiz durma, gorunur durma olmali.
+    """
+    from .risk import effective_floor
+
+    rs = store.load_risk_state()
+    floor = effective_floor(cfg.risk, rs)
+    if floor <= 0:
+        return None
+    try:
+        equity = broker.equity() if broker is not None else 0.0
+    except Exception:
+        return None
+    if equity <= 0:
+        return None
+
+    yastik = max(0.0, equity - floor)
+    esik = cfg.risk.min_cushion_usdt
+    if yastik < esik:
+        return Check(
+            "Sermaye tabani", CRITICAL,
+            f"Yastik tukendi: bakiye {equity:.2f}, taban {floor:.2f} -> "
+            f"riske atilabilir {yastik:.2f} (esik {esik:.2f}). "
+            "Bot yeni islem ACMIYOR.",
+            "Taban isini yapti, sermayen korundu. Devam etmek istersen ya "
+            "hesaba para ekle ya da capital_floor_usdt'yi dusur. "
+            "Once NEDEN buraya gelindigine bak.",
+        )
+    if yastik < esik * 2:
+        return Check(
+            "Sermaye tabani", WARN,
+            f"Yastik azaliyor: {yastik:.2f} (durma esigi {esik:.2f}). "
+            f"Bakiye {equity:.2f}, taban {floor:.2f}.",
+            "Pozisyonlar kuculerek devam ediyor. Mudahale gerekmiyor ama "
+            "yastik biterse bot duracak.",
+        )
+    return Check("Sermaye tabani", INFO,
+                 f"Taban {floor:.2f} korunuyor, yastik {yastik:.2f} "
+                 f"(bakiyenin %{yastik/equity*100:.0f}'i).")
+
+
 def _check_alive(cfg: Config, store, now: int) -> Check:
     last = store.last_equity()
     if not last:

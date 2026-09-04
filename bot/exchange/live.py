@@ -37,20 +37,57 @@ class LiveBroker(Broker):
         # Tahtada bekleyen post_only giris emirleri. Yeniden baslatmada
         # kaybolmamali: aksi halde borsada sahipsiz bir limit emir kalir.
         self._pending: Dict[str, dict] = (store.get_kv("pending_entries") or {})
+        self._bal_cache: Optional[Dict[str, float]] = None
+        self._bal_ts = 0.0
         self.client.sync_time()
 
     # --------------------------------------------------------------- hesap
+    def _balances(self) -> Dict[str, float]:
+        """Bakiye sorgusunu tur icinde bir kez yapar.
+
+        equity(), free_margin() ve realized_equity() ayni turda arka arkaya
+        cagriliyor; her biri icin ayri istek atmak gereksiz.
+        """
+        now = time.time()
+        if self._bal_cache is None or now - self._bal_ts > 2.0:
+            self._bal_cache = self.client.balances()
+            self._bal_ts = now
+        return self._bal_cache
+
     def equity(self) -> float:
-        return self.client.balances()["equity"]
+        return self._balances()["equity"]
+
+    def realized_equity(self) -> float:
+        # totalWalletBalance: gerceklesmemis PnL DAHIL DEGIL.
+        b = self._balances()
+        return b.get("wallet") or b["equity"]
 
     def free_margin(self) -> float:
-        return self.client.balances()["available"]
+        return self._balances()["available"]
 
     def positions(self) -> Dict[str, Position]:
         return dict(self._positions)
 
     def pending_entries(self) -> Dict[str, str]:
         return {sym: rec["side"] for sym, rec in self._pending.items()}
+
+    def cancel_pending(self) -> int:
+        """Tahtadaki bekleyen giris emirlerini borsadan iptal eder."""
+        n = 0
+        for symbol in list(self._pending):
+            rec = self._pending[symbol]
+            try:
+                self.client.cancel_order(symbol, rec["cid"])
+                n += 1
+            except BinanceError:
+                # Emir bu arada dolmus ya da zaten iptal olmus olabilir.
+                # Dolduysa reconcile() bir sonraki turda pozisyonu yakalar.
+                log.warning("%s bekleyen emir iptal edilemedi", symbol, exc_info=True)
+            self._pending.pop(symbol, None)
+        self._save_pending()
+        if n:
+            log.warning("[LIVE] %d bekleyen giris emri iptal edildi", n)
+        return n
 
     def prepare_symbol(self, symbol: str, leverage: int) -> None:
         key = f"{symbol}:{leverage}"

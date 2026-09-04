@@ -138,7 +138,12 @@ def size_position(
     lev_cap = max_safe_leverage(stop_pct, risk_cfg.max_stop_vs_liquidation)
     leverage = max(1, min(desired_leverage, risk_cfg.max_leverage, lev_cap))
 
-    risk_amount = base * risk_cfg.risk_per_trade_pct / 100.0
+    # Ogrenme katmani risk_per_trade_pct'i carpabiliyor (varsayilan tavan
+    # 1.0, yani artiramaz -- ama config 1.5'e izin veriyor). Config
+    # dogrulamasi "taban varken en fazla %6" diye soz veriyor; runtime'in
+    # o sozu bozmamasi icin burada da kirpiliyor.
+    yuzde = min(risk_cfg.risk_per_trade_pct, 6.0 if floor > 0 else 2.0)
+    risk_amount = base * yuzde / 100.0
 
     # Tavan 0: ayni anda acik TUM pozisyonlarin toplam riski. Tek islem
     # tabani delemez ama es zamanli 4 islem birden ters giderse delebilir.
@@ -184,7 +189,7 @@ def size_position(
     notional = qty * entry
     margin = notional / leverage
     actual_risk = qty * stop_dist
-    if actual_risk > base * (risk_cfg.risk_per_trade_pct * 1.05) / 100.0:
+    if actual_risk > base * (yuzde * 1.05) / 100.0:
         return SizingResult(False, reason="hesaplanan risk butceyi asiyor")
 
     return SizingResult(

@@ -181,3 +181,22 @@ def test_gecersiz_ratchet_reddedilir():
         _cfg(capital_floor_ratchet_pct=100.0).validate()
     with pytest.raises(ConfigError):
         _cfg(capital_floor_ratchet_pct=-5.0).validate()
+
+
+# ============================================================ denetim bulgulari
+# Asagidaki testler bagimsiz denetimde bulunan gercek hatalari sabitliyor.
+
+def test_ogrenme_carpani_dogrulanan_tavani_ASAMAZ(f):
+    """Config 'taban varken en fazla %6' diye soz veriyor. Ogrenme katmani
+    risk_per_trade_pct'i carpabildigi icin runtime o sozu bozabiliyordu."""
+    c = _cfg(capital_floor_usdt=170.0, risk_per_trade_pct=9.0)   # 6 x 1.5
+    s = size_position(300.0, 300.0, 100.0, 97.0, f, c.risk, 5)
+    assert s.ok
+    assert s.risk_amount <= 130.0 * 0.06 * 1.05, "yastigin %6 tavani asildi"
+
+
+def test_tabansiz_carpan_da_kirpilir(f):
+    c = _cfg(risk_per_trade_pct=3.0)   # dogrulamadan gecmez ama runtime gorebilir
+    s = size_position(1000.0, 1000.0, 100.0, 97.0, f, c.risk, 5)
+    assert s.ok
+    assert s.risk_amount <= 1000.0 * 0.02 * 1.05, "equity'nin %2 tavani asildi"

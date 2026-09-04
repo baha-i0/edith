@@ -7,15 +7,20 @@ kapatilacak -- hepsine kendisi karar verir. Sen kurarsin, sonra dokunmazsin.
 
 ## 0. Once gercek rakam
 
-**Bot para basmaz.** Yillik ~%12 beklentisi var ve yolda **%20 dusus** goreceksin.
+**Bot para basmaz.** 5 yillik gecmis veride yillik **+%15,4** olcusdu ve yolda
+**%14 dusus** vardi. Gelecek daha kotu olabilir: ayni testin ikinci yarisinda
+oran +%9'a dusuyor.
 
 $200 ile:
 
 | | tutar |
 |---|---|
-| Beklenen yillik getiri | ~$25 |
-| Normal karsilanan en kotu dusus | ~-$42 (hesap $158'e iner) |
-| Bunun kalici olma ihtimali | var |
+| Beklenen yillik getiri | ~$31 (gunde ~$0,08) |
+| Olculen en kotu dusus | -$28 (hesap $172'ye iner) |
+| Daha kotusunun olma ihtimali | var |
+
+Bu rakamlar geleceği garanti etmez. Kripto pozisyonlari yuksek korelasyonlu:
+4 acik long, cokuste tek buyuk pozisyon gibi davranir.
 
 **Kaybetmeyi goze alamayacagin parayi koyma.**
 
