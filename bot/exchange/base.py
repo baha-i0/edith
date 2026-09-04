@@ -69,6 +69,10 @@ class Broker(ABC):
         """
         return self.equity()
 
+    def pending_risk(self) -> float:
+        """Tahtada bekleyen giris emirlerinin toplam riski (USDT)."""
+        return 0.0
+
     def cancel_pending(self) -> int:
         """Tahtada bekleyen giris emirlerini iptal eder; kac tane oldugunu doner.
 
@@ -89,5 +93,6 @@ class Broker(ABC):
         return {}
 
     @abstractmethod
-    def update_stop(self, symbol: str, new_stop: float) -> None:
+    def update_stop(self, symbol: str, new_stop: float):
+        """Stop'u tasir. Koruma kurulamayip pozisyon kapanirsa Trade doner."""
         ...

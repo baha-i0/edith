@@ -230,9 +230,20 @@ def _check_edge_alive(cfg: Config, store) -> Check:
     gercekten yok oldugunu yakalamak. Kanit varsa bot durur ve seni cagirir --
     kendini yeniden ayarlamaz.
     """
-    trades = store.all_trades()
-    n = len(trades)
+    # KAYAN PENCERE, tum gecmis degil. Iki sebep:
+    #
+    # 1) Istatistiksel: iki yil once olmus bir edge, bugunku sorunun kaniti
+    #    degil. Tum gecmisi kullanmak eski verinin bugunku karari yutmasi
+    #    demek -- her iki yonde de.
+    # 2) Golge modu KILITLENIYORDU: golgede kanit uretip canliya donuldugunde
+    #    bu kontrol hala AYNI omurluk ortalamayi goruyor ve bir saat icinde
+    #    tekrar golgeye atiyordu. ShadowTracker.enter() ise golge gecmisini
+    #    sifirliyor -- yani 40 sanal islem bosa gidiyor ve dongu sonsuza
+    #    kadar tekrarliyordu. Bot "kendini toparliyorum" derken hicbir zaman
+    #    islem yapmiyordu.
     min_n = cfg.health.min_trades_for_edge_check
+    trades = store.recent_trades(limit=max(min_n * 4, 200))
+    n = len(trades)
     if n < min_n:
         return Check("Strateji hala calisiyor mu", INFO,
                      f"Karar icin {min_n} islem gerekiyor, su an {n} var. "
@@ -263,10 +274,14 @@ def _check_edge_alive(cfg: Config, store) -> Check:
 
 
 def _check_drawdown(cfg: Config, store, learner) -> Check:
-    series = store.equity_series()
+    series = store.equity_series(limit=2)
     if len(series) < 2:
         return Check("Dusus", INFO, "Yeterli equity gecmisi yok.")
-    peak = max(e for _, e in series)
+    # Zirve TUM gecmisten okunur. equity_series(limit=N) son N satiri doner;
+    # dakikada bir kayitla varsayilan 5000 satir sadece ~3.5 gundur. O
+    # pencereyle bakinca aylara yayilan bir erime hep "%1 dusus" gorunur ve
+    # %15/%22 esikleri hicbir zaman tetiklenmez -- yani koruma korlesir.
+    peak = store.peak_equity()
     cur = series[-1][1]
     dd = 100.0 * (peak - cur) / peak if peak > 0 else 0.0
     hc = cfg.health

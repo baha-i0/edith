@@ -126,17 +126,30 @@ gibi davranir. Gercek sayi bu:
 
 ```
 Sure             : 4.9 yil
-Equity           : 200.00 -> 406.03 (+103.0%)
-Yillik bilesik   : +15.4%
+Equity           : 200.00 -> 382.75 (+91.4%)
+Yillik bilesik   : +14.0%
 Islem            : 358  (72/yil)
 Isabet / PF      : %54.7 / 1.60
 Beklenti         : +0.285 R/islem
-Maks. dusus      : 14.1%
+Maks. dusus      : 14.2%
 t-degeri (kaba)  : 4.40
+Komisyon/funding : 18.75 / 18.03 USDT
 ```
 
 Bu rakamlar `config.example.yaml`'in **sevk edilen** hali icindir
-(post_only giris dahil). Asagidaki iki tablo tek tek OZELLIK olcumleridir:
+(post_only giris ve funding dahil).
+
+**Funding hakkinda:** portfoy backtesti bastan beri funding kesmiyordu --
+sadece tek sembol yolu kesiyordu, ve README rakamlari portfoy yolundan
+geliyordu. Duzeltildi. Maliyet komisyonla ayni buyuklukte cikti (18.03
+vs 18.75 USDT) ve yillik getiriyi %15.4'ten **%14.0**'a indirdi.
+
+Funding **yonden bagimsiz maliyet** olarak modelleniyor. Gercekte oran
+isaret degistirir (bazen long oder, bazen short); hangisinin ne zaman
+olacagi onceden bilinemez. "Long oder, short alir" varsaymak short'lara
+sistematik bedava kazanc verir: o modelle sonuc +%16.1 cikiyordu, yani
+funding'i tamamen atlamaktan bile IYI. Backtest'in geri kalani gibi
+burada da bilinmeyen aleyhte varsayiliyor. Asagidaki iki tablo tek tek OZELLIK olcumleridir:
 her biri sadece o ozelligi acip kapatir, digerleri sabit kalir.
 
 Genislik filtresinden ONCE ve SONRA (ikisi de market giris):
@@ -160,7 +173,7 @@ kotulesiyor** (0.45 -> 0.41). Yani o sadece kaldirac, iyilestirme degil.
 
 | donem              | yil | islem | yillik | beklenti | t    |
 |--------------------|-----|-------|--------|----------|------|
-| tamami             | 4.9 | 358   | +15.4% | +0.285   | 4.40 |
+| tamami             | 4.9 | 358   | +14.0% | +0.285   | 4.40 |
 | ilk yari           | 2.4 | 162   | +21.4% | +0.401   | 4.03 |
 | ikinci yari (OOS)  | 2.5 | 192   | +10.2% | +0.188   | 2.31 |
 | son 1.5 yil (OOS)  | 1.5 | 125   | +6.3%  | +0.114   | 1.03 |
@@ -187,6 +200,10 @@ Portfoy backtesti (15 sembol, 5 yil, risk %0.75, kotumser dolum varsayimi):
 | market (taker)                | 358   | 54.5%  | +0.277R  | +14.8% | 14.2% | 27.0$    |
 | post_only, dolmazsa **market**| 358   | 54.7%  | +0.285R  | +15.4% | 14.1% | 19.4$    |
 | post_only, dolmazsa vazgec    | 350   | 55.7%  | +0.305R  | +16.3% | 13.4% | 19.2$    |
+
+*(Bu tablo ve asagidaki risk tablosu funding duzeltmesinden ONCE olculdu.
+Funding her iki kola da esit uygulandigi icin karsilastirmanin YONU
+degismez; mutlak yillik degerler yaklasik 1.4 puan yuksek.)*
 
 Ilk bakista "vazgec" varyanti kazaniyor. **Zaman bolmesini gecemedi:**
 

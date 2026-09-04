@@ -139,6 +139,19 @@ class Store:
         ).fetchall()
         return [(r["ts"], r["equity"]) for r in reversed(rows)]
 
+    def peak_equity(self) -> float:
+        """TUM gecmisin zirvesi.
+
+        equity_series(limit=N) son N satiri doner; dakikada bir kayitla
+        5000 satir ~3.5 gundur. Dusus kontrolunu o pencereyle yapmak,
+        aylara yayilan bir erimeyi GORUNMEZ kilar: her an son 3.5 gunun
+        zirvesine yakin durursun ve dusus hep %1 cikar.
+        """
+        row = self.conn.execute(
+            "SELECT MAX(equity) AS m FROM equity WHERE mode=?", (self.mode,)
+        ).fetchone()
+        return float(row["m"]) if row and row["m"] is not None else 0.0
+
     def recent_trades(self, limit: int = 20) -> List[sqlite3.Row]:
         return self.conn.execute(
             "SELECT * FROM trades WHERE mode=? ORDER BY closed_at DESC LIMIT ?",

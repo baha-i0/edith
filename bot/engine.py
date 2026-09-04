@@ -106,34 +106,19 @@ class TradingEngine:
         # Taban GERCEKLESMIS bakiye uzerinden cirpinir. Acik pozisyonun
         # kagit uzerindeki kari zirve saydirilirsa, hic bankaya girmemis
         # bir paraya gore taban kilitlenir ve bot felc olur.
-        gerceklesmis = self.broker.realized_equity()
-        # Once nakit akisi: para yatirdiysan/cektiysen taban kaydirilir.
-        # Bu olmadan kar cekmek botu kalici olarak felc ederdi.
-        # Toplam gerceklesen kar = kapanmis islemler + ACIK pozisyonlarin
-        # kismi cikislarindan gelen kar. Ikincisi olmadan kismi TP1 dolumu
-        # "para yatirma", tam kapanis da "para cekme" sanilirdi.
-        toplam_pnl = self.store.stats().get("net_pnl", 0.0) + sum(
-            p.realized_pnl for p in self.broker.positions().values())
-        akis = apply_cash_flow(self.cfg.risk, self.guard.state, gerceklesmis,
-                               toplam_pnl)
-        if akis:
-            log.warning("Nakit akisi tespit edildi: %+.2f USDT -> zirve %.2f, "
-                        "taban %.2f", akis, self.guard.state.peak_equity,
-                        self.guard.state.floor_usdt)
-            self.notifier.send(
-                f"{'PARA YATIRMA' if akis > 0 else 'PARA CEKME'} algilandi: "
-                f"{akis:+.2f} USDT\n"
-                f"Taban buna gore guncellendi: {self.guard.state.floor_usdt:.2f} USDT")
-        yeni = update_floor(self.cfg.risk, self.guard.state, gerceklesmis)
-        if yeni > onceki > 0:
-            log.info("Taban yukseldi: %.2f -> %.2f USDT (zirve %.2f)",
-                     onceki, yeni, self.guard.state.peak_equity)
         self.guard.roll_day(now, equity)
         self.learner.record_equity(equity)
 
         if isinstance(self.broker, LiveBroker):
             for trade in self.broker.reconcile():
                 self._on_trade_closed(trade, now)
+
+        # SIRA ONEMLI: nakit akisi ancak reconcile islemleri deftere
+        # yazdiktan SONRA olculebilir. Once olcersek, borsada kapanan bir
+        # islem "bakiye dustu ama pnl degismedi" gorunur ve PARA CEKME
+        # sanilir; bir sonraki turda ayni tutar PARA YATIRMA sanilir.
+        # Iki yanlis bildirim, ve bir tur boyunca yanlis taban.
+        self._update_floor_and_flows(now)
 
         # Gun durdurulduysa (zarar limiti / kar hedefi) ya da sahibi
         # durdurduysa, tahtadaki emirler de iptal edilir. Aksi halde
@@ -183,6 +168,36 @@ class TradingEngine:
             log.exception("Sinyal dagitimi basarisiz")
 
         self._maybe_health_check(now)
+        # Gunluk rapor tick'in SONUNDA, kosulsuz. Onceden _allocate'in son
+        # satirindaydi ve _allocate sinyal yoksa / genislik filtresi bosaltinca
+        # / risk kapisi kapaliyken ERKEN DONUYORDU -- yani rapor ancak ayni
+        # anda 4 sembol sinyal verdiginde gonderilebiliyordu. "Sen bota gitme,
+        # o sana gelsin" tasariminin tamami bu yuzden calismiyordu.
+        self._maybe_daily_report(now)
+
+    def _update_floor_and_flows(self, now: int) -> None:
+        """Nakit akisini olcup tabani gunceller. reconcile'dan SONRA cagrilir."""
+        st = self.guard.state
+        onceki = st.floor_usdt
+        gerceklesmis = self.broker.realized_equity()
+        # Toplam gerceklesen kar = kapanmis islemler + ACIK pozisyonlarin
+        # kismi cikislarindan gelen kar. Ikincisi olmadan kismi TP1 dolumu
+        # "para yatirma", tam kapanis da "para cekme" sanilirdi.
+        toplam_pnl = self.store.stats().get("net_pnl", 0.0) + sum(
+            p.realized_pnl for p in self.broker.positions().values())
+        akis = apply_cash_flow(self.cfg.risk, st, gerceklesmis, toplam_pnl)
+        if akis:
+            log.warning("Nakit akisi: %+.2f USDT -> zirve %.2f, taban %.2f",
+                        akis, st.peak_equity, st.floor_usdt)
+            if effective_floor(self.cfg.risk, st) > 0:
+                self.notifier.send(
+                    f"{'PARA YATIRMA' if akis > 0 else 'PARA CEKME'} algilandi: "
+                    f"{akis:+.2f} USDT\n"
+                    f"Sermaye tabani guncellendi: {st.floor_usdt:.2f} USDT")
+        yeni = update_floor(self.cfg.risk, st, gerceklesmis)
+        if yeni > onceki > 0:
+            log.info("Taban yukseldi: %.2f -> %.2f USDT (zirve %.2f)",
+                     onceki, yeni, st.peak_equity)
 
     def _allocate(self, candidates: List[tuple], now: int, equity: float) -> None:
         """Aday sinyaller arasindan slot dagitimi.
@@ -235,7 +250,6 @@ class TradingEngine:
                     log.debug("giris kapali (%s)", why)
                     return
             self._enter(symbol, sig, now, equity)
-        self._maybe_daily_report(now)
 
     def _maybe_daily_report(self, now: int) -> None:
         """Gunde bir kez telefona ozet gonderir.
@@ -664,7 +678,8 @@ class TradingEngine:
             equity=equity, free_margin=self.broker.free_margin(),
             entry=sig.entry, stop=sig.stop, filters=filters,
             risk_cfg=risk_cfg, desired_leverage=self.cfg.account.leverage,
-            open_risk=open_risk_total(self.broker.positions().values()),
+            open_risk=(open_risk_total(self.broker.positions().values())
+                       + self.broker.pending_risk()),
             state=self.guard.state,
         )
         if not sizing.ok:
@@ -715,7 +730,13 @@ class TradingEngine:
 
         for act in actions:
             if act["type"] == "move_stop":
-                self.broker.update_stop(pos.symbol, act["price"])
+                kapanan = self.broker.update_stop(pos.symbol, act["price"])
+                if kapanan is not None:
+                    # Koruma kurulamadi ve pozisyon kapatildi. Bu islem
+                    # deftere GECMELI: yoksa gunluk zarar limiti ve ust uste
+                    # zarar sayaci o kaybi hic gormez.
+                    self._on_trade_closed(kapanan, now)
+                    continue
                 log.info("%s stop %s -> %.4f", pos.symbol, act["reason"], act["price"])
             elif live_mode and act["reason"] in ("stop", "tp1", "tp2"):
                 continue  # borsadaki emirler halleder, mutabakat yakalar

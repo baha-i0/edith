@@ -175,3 +175,29 @@ def test_signal_quality_accepts_good_setup():
                  atr=4, reason="test")
     ok, why = validate_signal_quality(sig, cfg)
     assert ok, why
+
+
+def test_gun_donumu_SADECE_gunluk_durdurmayi_temizler():
+    """halted bayragi uc sebep icin ortak: gunluk zarar limiti, gunluk kar
+    hedefi ve 'edge oldu'. Hepsini gece yarisi silmek, kanitlanmis bozuk
+    bir stratejinin 00:00 UTC'de kendiliginden calismaya baslamasi demekti."""
+    import time as _t
+
+    from bot.config import Config
+    from bot.risk import RiskGuard, RiskState
+
+    cfg = Config()
+    simdi = int(_t.time() * 1000)
+
+    # gunluk sebep -> temizlenmeli
+    st = RiskState(day="2020-01-01", halted=True,
+                   halt_reason="gunluk zarar limiti (4%)", day_start_equity=1000.0)
+    RiskGuard(cfg, st).roll_day(simdi, 1000.0)
+    assert st.halted is False
+
+    # edge oldu -> KALMALI
+    st2 = RiskState(day="2020-01-01", halted=True,
+                    halt_reason="strateji istatistiksel olarak bozuk",
+                    day_start_equity=1000.0)
+    RiskGuard(cfg, st2).roll_day(simdi, 1000.0)
+    assert st2.halted is True, "kanitlanmis bozuk strateji gece yarisi acildi"

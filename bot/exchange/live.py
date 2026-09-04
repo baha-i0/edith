@@ -36,7 +36,8 @@ class LiveBroker(Broker):
         self._prepared: set[str] = set()
         # Tahtada bekleyen post_only giris emirleri. Yeniden baslatmada
         # kaybolmamali: aksi halde borsada sahipsiz bir limit emir kalir.
-        self._pending: Dict[str, dict] = (store.get_kv("pending_entries") or {})
+        self._pending: Dict[str, dict] = (store.get_kv(f"pending_entries:{cfg.mode}") or {})
+        self._orphan_trades: list = []
         self._bal_cache: Optional[Dict[str, float]] = None
         self._bal_ts = 0.0
         self.client.sync_time()
@@ -70,6 +71,17 @@ class LiveBroker(Broker):
 
     def pending_entries(self) -> Dict[str, str]:
         return {sym: rec["side"] for sym, rec in self._pending.items()}
+
+    def pending_risk(self) -> float:
+        """Tahtada bekleyen giris emirlerinin toplam riski (USDT).
+
+        Bunlar henuz Position degil, ama para TAAHHUT EDILMIS durumda.
+        Sayilmazsa ayni turda secilen N aday da ayni 'acik risk' degerini
+        gorur ve yastik tavani N kez bagimsiz uygulanir -- yani tavan
+        fiilen N katina cikar.
+        """
+        return sum(abs(r["entry"] - r["stop"]) * r["qty"]
+                   for r in self._pending.values())
 
     def cancel_pending(self) -> int:
         """Tahtadaki bekleyen giris emirlerini borsadan iptal eder."""
@@ -152,7 +164,7 @@ class LiveBroker(Broker):
 
     # ------------------------------------------------- post_only giris akisi
     def _save_pending(self) -> None:
-        self.store.set_kv("pending_entries", self._pending)
+        self.store.set_kv(f"pending_entries:{self.cfg.mode}", self._pending)
 
     def _place_post_only(self, signal, qty: float, leverage: int, f: SymbolFilters,
                          side: str, cid: str, now: int) -> None:
@@ -201,7 +213,26 @@ class LiveBroker(Broker):
             try:
                 o = self.client.query_order(symbol, rec["cid"])
             except BinanceError:
-                log.exception("%s bekleyen emir sorgulanamadi", symbol)
+                # Sonsuza kadar denemek sembolu KALICI olarak bloke eder:
+                # kayit _pending'de kalir, pending_entries onu raporlar,
+                # _allocate o sembolu atlar ve open_position yeni emir
+                # koymaz. Borsa iptal edilmis bir emri bir sure sonra
+                # unutur (-2013), yani bu hata kalici olabilir.
+                rec["hata"] = int(rec.get("hata", 0)) + 1
+                if rec["hata"] < 5:
+                    log.warning("%s bekleyen emir sorgulanamadi (%d/5)",
+                                symbol, rec["hata"], exc_info=True)
+                    self._pending[symbol] = rec
+                    self._save_pending()
+                    continue
+                log.error("%s bekleyen emir 5 kez sorgulanamadi - kayit "
+                          "dusuruluyor, emir iptal deneniyor", symbol)
+                try:
+                    self.client.cancel_order(symbol, rec["cid"])
+                except BinanceError:
+                    pass
+                self._pending.pop(symbol, None)
+                self._save_pending()
                 continue
             status = str(o.get("status", ""))
             done = float(o.get("executedQty") or 0)
@@ -295,23 +326,70 @@ class LiveBroker(Broker):
         return self._market_entry(sig, rec["qty"], rec["leverage"], f, side,
                                   f"{rec['cid']}m", now)
 
+    def _ensure_protected(self, pos: Position) -> None:
+        """Stop emri BORSADA hala duruyor mu? Durmuyorsa yeniden kurar.
+
+        Bu modulun tum guvenlik tasarimi "koruma emri borsada durur"
+        varsayimina dayaniyordu ama hicbir yerde DOGRULANMIYORDU.
+        Korumasiz kalmanin uc yolu var ve hicbiri crash gerektirmiyor:
+          - kullanici Binance uygulamasindan stop'u elle iptal eder
+          - close_position once cancel_all yapar, sonraki market emri
+            reddedilirse pozisyon sifir emirle kalir
+          - giris ile save_position arasinda surec olur
+
+        reconcile sadece positionAmt'a bakiyordu; miktar degismedigi icin
+        hicbiri fark edilmiyordu. Kaldiracli bir pozisyon 33 gune kadar
+        korumasiz tasinabiliyordu.
+        """
+        try:
+            acik = self.client.open_orders(pos.symbol)
+        except BinanceError:
+            log.warning("%s acik emirler okunamadi, koruma dogrulanamadi",
+                        pos.symbol, exc_info=True)
+            return
+        if any(str(o.get("type", "")).startswith("STOP") for o in acik):
+            return
+        log.error("%s KORUMASIZ: borsada stop emri yok. Yeniden kuruluyor.",
+                  pos.symbol)
+        exit_side = "SELL" if pos.side == LONG else "BUY"
+        try:
+            self._place_protection(pos, exit_side, self.client.filters(pos.symbol))
+            log.warning("%s koruma yeniden kuruldu (stop %.4f)", pos.symbol, pos.stop)
+        except Exception:
+            log.exception("%s koruma kurulamadi - pozisyon kapatiliyor", pos.symbol)
+            trade = self.close_position(pos.symbol, 1.0, pos.stop, "koruma-kurulamadi")
+            if trade is not None:
+                self._orphan_trades.append(trade)
+
     def _place_protection(self, pos: Position, exit_side: str, f: SymbolFilters) -> None:
         self.client.stop_market(pos.symbol, exit_side, pos.stop, client_id=f"{pos.client_id}sl")
+        # TP1 zaten dolduysa YENIDEN KOYMA. Koyarsak fiyat hedefin otesinde
+        # oldugu icin borsa ya emri reddeder (-2021 "would immediately
+        # trigger") -- ki bu koruma-hatasi yoluna dusup pozisyonu piyasadan
+        # kapatir -- ya da kabul edip aninda tetikler ve kalan %50'lik
+        # kosucuyu da satar. Iki halde de 4R hedefine giden kisim olur.
         tp1_qty = f.round_qty(pos.qty * self.cfg.strategy.tp1_size_pct / 100.0)
-        if 0 < tp1_qty < pos.qty and f.qty_ok(tp1_qty, pos.tp1):
+        if not pos.tp1_filled and 0 < tp1_qty < pos.qty and f.qty_ok(tp1_qty, pos.tp1):
             self.client.take_profit_market(pos.symbol, exit_side, pos.tp1, qty=tp1_qty,
                                            client_id=f"{pos.client_id}t1")
         self.client.take_profit_market(pos.symbol, exit_side, pos.tp2,
                                        client_id=f"{pos.client_id}t2")
 
-    def update_stop(self, symbol: str, new_stop: float) -> None:
+    def update_stop(self, symbol: str, new_stop: float) -> Optional[Trade]:
+        """Stop'u tasir. Koruma kurulamazsa pozisyon kapanir ve o islem DONER.
+
+        Eskiden None donuyordu ve kapanan islem sessizce yutuluyordu:
+        _on_trade_closed calismadigi icin gunluk zarar sayaci artmiyor,
+        ust uste zarar sayaci sifirlanmiyor, ogrenme kaydi olusmuyordu --
+        yani gunluk limit o islemi hic gormuyordu.
+        """
         pos = self._positions.get(symbol)
         if not pos:
-            return
+            return None
         f = self.client.filters(symbol)
         new_stop = f.round_price(new_stop)
         if new_stop == pos.stop:
-            return
+            return None
         exit_side = "SELL" if pos.side == LONG else "BUY"
         # Once yeni koruma, sonra eskilerin iptali mumkun degil (closePosition tekil):
         # bu yuzden iptal + yeniden kurma sirasinda hata olursa pozisyon kapatilir.
@@ -322,12 +400,12 @@ class LiveBroker(Broker):
             )
         except Exception:
             log.exception("Stop guncellenemedi - pozisyon kapatiliyor (korumasiz kalmaktansa)")
-            self.close_position(symbol, 1.0, pos.stop, "koruma-hatasi")
-            return
+            return self.close_position(symbol, 1.0, pos.stop, "koruma-hatasi")
         pos.stop = new_stop
         pos.breakeven_moved = True
         self.store.save_position(pos)
         log.info("[LIVE] STOP guncellendi %s -> %.4f", symbol, new_stop)
+        return None
 
     def close_position(self, symbol: str, portion: float, price_hint: float,
                        reason: str) -> Optional[Trade]:
@@ -343,7 +421,8 @@ class LiveBroker(Broker):
             self.client.cancel_all(symbol)
         order = self.client.market_order(symbol, exit_side, qty, reduce_only=True)
         if portion >= 1.0:
-            return self._finalize(pos, reason)
+            px = float(order.get("avgPrice") or 0) or price_hint
+            return self._finalize(pos, reason, fallback_exit=px)
 
         # KISMI cikis: islem kaydi olusmaz (istatistikleri bozardi) ama
         # gerceklesen kar cuzdana girer. Bunu pozisyonda takip etmezsek
@@ -365,6 +444,7 @@ class LiveBroker(Broker):
         islemi burada yakalayip gercek PnL ile kaydediyoruz.
         """
         closed: list[Trade] = []
+        self._orphan_trades = []
         try:
             live = {p["symbol"]: p for p in self.client.position_risk()}
         except BinanceError:
@@ -374,7 +454,10 @@ class LiveBroker(Broker):
         for symbol, pos in list(self._positions.items()):
             exch = live.get(symbol)
             if exch is None:
-                trade = self._finalize(pos, "borsada-kapandi")
+                # Borsada kapanmis; fiyat bilinmiyorsa stop varsayilir
+                # (kotumser: kazanci degil kaybi varsay).
+                trade = self._finalize(pos, "borsada-kapandi",
+                                       fallback_exit=pos.stop)
                 if trade:
                     closed.append(trade)
                 continue
@@ -383,6 +466,10 @@ class LiveBroker(Broker):
                 pos.qty = amt
                 pos.tp1_filled = True
                 self.store.save_position(pos)
+            self._ensure_protected(pos)
+
+        closed.extend(self._orphan_trades)
+        self._orphan_trades = []
 
         for symbol, exch in live.items():
             if symbol not in self._positions and symbol in self.cfg.symbols:
@@ -390,11 +477,13 @@ class LiveBroker(Broker):
                             symbol, exch["positionAmt"])
         return closed
 
-    def _finalize(self, pos: Position, reason: str) -> Optional[Trade]:
+    def _finalize(self, pos: Position, reason: str,
+                  fallback_exit: Optional[float] = None) -> Optional[Trade]:
         """Gerceklesmis PnL'i borsanin kendi kayitlarindan toplar."""
         realized = 0.0
         commission = 0.0
         exit_price = pos.entry_price
+        okundu = False
         # 60 sn geriye bakmanin sebebi saat kaymasi: opened_at yerel saatten,
         # fill zamani borsadan gelir. AMA bu pencere ayni sembolde bir ONCEKI
         # islemin fill'lerine uzanirsa o islemin PnL'i buraya da yazilir ve
@@ -403,6 +492,17 @@ class LiveBroker(Broker):
         # birbirinden kayabilir ve zaten 60 sn'lik pencerenin sebebi bu kayma.
         son_fill = int((self.store.get_kv("last_fill_ms") or {}).get(pos.symbol, 0))
         baslangic = max(pos.opened_at - 60_000, son_fill + 1)
+        # Binance, startTime-only userTrades sorgusunu 7 gunle sinirlar.
+        # max_bars_in_trade 4h'te 33 gune kadar cikabiliyor; eski bir
+        # baslangicla sorgu bos donerdi. Cikis fill'leri her zaman SON'da
+        # oldugu icin pencereyi sona yaslamak PnL'i kaybettirmez (giris
+        # komisyonu disinda -- o da PnL'e degil fees'e yazilir).
+        simdi = int(time.time() * 1000)
+        en_erken = simdi - 6 * 86_400_000
+        if baslangic < en_erken:
+            log.info("%s 6 gunden uzun tutuldu; userTrades penceresi sona "
+                     "yaslandi (giris komisyonu eksik olabilir)", pos.symbol)
+            baslangic = en_erken
         yeni_son_fill = son_fill
         try:
             fills = self.client.user_trades(pos.symbol, baslangic)
@@ -415,9 +515,22 @@ class LiveBroker(Broker):
                 commission += float(t.get("commission", 0))
                 if float(t.get("realizedPnl", 0)) != 0:
                     exit_price = float(t.get("price", exit_price))
+                    okundu = True
         except BinanceError:
-            log.exception("userTrades okunamadi, PnL tahmini kullanilacak")
-            realized = pos.realized_pnl
+            # ESKIDEN: realized = pos.realized_pnl -> canlida bu HEP 0'di.
+            # Yani ag hatasi sirasinda kapanan bir stop, pnl=0 olarak
+            # kaydediliyordu: gunluk zarar limiti kaybi hic gormuyor,
+            # 'pnl < 0' yanlis oldugu icin ust uste zarar sayaci SIFIRLANIYOR
+            # ve 4 saatlik soguma hic tetiklenmiyordu. Gercek zarari sifir
+            # yazmak, bir riski gizlemenin en sessiz yolu.
+            log.exception("userTrades okunamadi, PnL fiyattan TAHMIN edilecek")
+            tahmin_px = fallback_exit if fallback_exit else pos.stop
+            realized = (pos.realized_pnl
+                        + (tahmin_px - pos.entry_price) * pos.qty * pos.direction)
+            exit_price = tahmin_px
+            reason = f"{reason}(tahmini)"
+        if not okundu and exit_price == pos.entry_price and fallback_exit:
+            exit_price = fallback_exit
 
         net = realized - commission
         risk_total = pos.initial_risk_per_unit * pos.initial_qty
@@ -428,6 +541,11 @@ class LiveBroker(Broker):
             pnl=net, fees=commission,
             r_multiple=(net / risk_total) if risk_total > 0 else 0.0,
             exit_reason=reason, entry_reason=pos.entry_reason,
+            # Giris kosullari ogrenme katmanina TASINMAK ZORUNDA. Bos
+            # birakilirsa regime_bucket her islemi adx=0/atr=0 kabul edip
+            # hepsini tek kovaya atar; kova gecmisi entegre calismaz ve
+            # backtest ile canli ayrisir.
+            context=dict(pos.context),
         )
         self._positions.pop(pos.symbol, None)
         self.store.clear_position(pos.symbol)

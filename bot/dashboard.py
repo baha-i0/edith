@@ -138,7 +138,12 @@ def build_state(cfg: Config, store, engine=None) -> Dict[str, Any]:
     rs = [r["r_multiple"] for r in rows]
     pnls = [r["pnl"] for r in rows]
 
-    eq_points = store.equity_series(limit=20_000)
+    # Pencere genis tutuluyor: dakikada bir kayitla 20k satir sadece ~14
+    # gundur ve "gorulen en kotu dusus" iki haftada bir sessizce sifirlanirdi.
+    # 400k satir ~9 aya karsilik gelir. _drawdown_series sira duyarli
+    # calistigi icin (zirveden ONCEKI dip dusus sayilmaz) tek dogru cozum
+    # pencereyi acmak, zirveyi ayri sorgulamak degil.
+    eq_points = store.equity_series(limit=400_000)
     dd, worst_dd = _drawdown_series(eq_points)
     shown = _downsample(list(zip([p[0] for p in eq_points],
                                  [p[1] for p in eq_points])))

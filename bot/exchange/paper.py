@@ -60,6 +60,10 @@ class PaperBroker(Broker):
     def pending_entries(self) -> Dict[str, str]:
         return {sym: rec["side"] for sym, rec in self._pending.items()}
 
+    def pending_risk(self) -> float:
+        return sum(abs(r["entry"] - r["stop"]) * r["qty"]
+                   for r in self._pending.values())
+
     def cancel_pending(self) -> int:
         n = len(self._pending)
         self._pending.clear()
@@ -204,6 +208,7 @@ class PaperBroker(Broker):
                             (pos.initial_risk_per_unit * pos.initial_qty)
                             if pos.initial_risk_per_unit > 0 else 0.0),
                 exit_reason=reason, entry_reason=pos.entry_reason,
+                context=dict(pos.context),
             )
             del self._positions[symbol]
             self.store.clear_position(symbol)

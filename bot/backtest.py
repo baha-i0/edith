@@ -190,7 +190,8 @@ def run_backtest(
 
         # --- 2) Funding (8 saatte bir)
         if pos and now - last_funding >= FUNDING_INTERVAL_MS:
-            cost = pos.notional(bar.open) * 0.0001 * pos.direction  # tipik +%0.01
+            # Kotumser: yonden bagimsiz maliyet (bkz. portfoy yolundaki not)
+            cost = abs(pos.notional(bar.open)) * 0.0001
             equity -= cost
             res.funding_paid += cost
             last_funding = now
@@ -287,6 +288,7 @@ class PortfolioResult:
     blocked_by_slots: int = 0
     blocked_by_guard: int = 0
     unfilled_entries: int = 0
+    funding_paid: float = 0.0
     fallback_entries: int = 0
 
     @property
@@ -358,6 +360,7 @@ class PortfolioResult:
             f"Slot doluydu     : {self.blocked_by_slots} sinyal kacti",
             f"Risk kapisi      : {self.blocked_by_guard} sinyal engellendi",
             f"Dolmayan emir    : {self.unfilled_entries} post_only girisi kacti",
+            f"Odenen funding   : {self.funding_paid:.2f}",
             f"Market'e dusen   : {self.fallback_entries} giris taker olarak yapildi",
         ])
 
@@ -398,7 +401,28 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
     pending: Dict[str, list] = {}
     post_only = e.entry_order_type == "post_only"
 
+    last_funding = timeline[0]
     for ts in timeline:
+        # Funding: 8 saatte bir, ACIK her pozisyondan ayri ayri kesilir.
+        # Tek sembol backtesti bunu bastan beri kesiyordu ama PORTFOY yolu
+        # kesmiyordu -- ve README'deki rakamlar bu yoldan geliyor. 33 gune
+        # kadar uzayabilen tutuslarda bu, olculen edge'in ayni buyuklugunde
+        # bir maliyet olabilir. Olcum, olculmeyen maliyeti iceremez.
+        if ts - last_funding >= FUNDING_INTERVAL_MS:
+            for _sym, _p in positions.items():
+                _i = idx[_sym].get(ts)
+                _px = data[_sym][_i].open if _i is not None else _p.entry_price
+                # KOTUMSER: funding her zaman MALIYET sayilir, yonden bagimsiz.
+                # Gercekte oran isaret degistirir (long oder / short oder) ve
+                # hangisinin ne zaman olacagi ONCEDEN BILINEMEZ. "Long oder,
+                # short alir" varsaymak short'lara sistematik bedava kazanc
+                # verir ve olcumu sisirir. Backtest'in geri kalani da ayni
+                # ilkeyle kurulu: bilinmeyen her zaman aleyhte varsayilir.
+                _cost = abs(_p.notional(_px)) * 0.0001
+                equity -= _cost
+                res.funding_paid += _cost
+            last_funding = ts
+
         # Taban her zaman adiminda guncellenir -- canli motor da her
         # donguda yapiyor. Sadece islem acilirken guncellemek zirveleri
         # kacirir ve cirpinan tabani oldugundan az kisitlayici olcerdi.

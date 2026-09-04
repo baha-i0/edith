@@ -7,7 +7,7 @@ kapatilacak -- hepsine kendisi karar verir. Sen kurarsin, sonra dokunmazsin.
 
 ## 0. Once gercek rakam
 
-**Bot para basmaz.** 5 yillik gecmis veride yillik **+%15,4** olcusdu ve yolda
+**Bot para basmaz.** 5 yillik gecmis veride yillik **+%14,0** olculdu ve yolda
 **%14 dusus** vardi. Gelecek daha kotu olabilir: ayni testin ikinci yarisinda
 oran +%9'a dusuyor.
 
@@ -15,7 +15,7 @@ $200 ile:
 
 | | tutar |
 |---|---|
-| Beklenen yillik getiri | ~$31 (gunde ~$0,08) |
+| Beklenen yillik getiri | ~$28 (gunde ~$0,08) |
 | Olculen en kotu dusus | -$28 (hesap $172'ye iner) |
 | Daha kotusunun olma ihtimali | var |
 

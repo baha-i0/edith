@@ -167,6 +167,8 @@ execution:
   # Portfoy backtesti (15 sembol, 5 yil, risk %0.75):
   #   market                       -> yillik +14.8%, komisyon 27.0$, bekl +0.277R
   #   post_only + market'e dusus   -> yillik +15.4%, komisyon 19.4$, bekl +0.285R
+  # (bu uc satir funding duzeltmesinden once; funding dahil sevk edilen
+  #  config +%14.0 yapar. Karsilastirmanin yonu degismez.)
   #   post_only + dolmazsa vazgec  -> yillik +16.3% AMA ikinci yarida kayboldu
   #
   # "Vazgec" varyanti daha parlak gorunuyor; ZAMAN BOLMESINI GECEMEDI:

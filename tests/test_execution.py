@@ -292,3 +292,32 @@ def test_realized_equity_kagit_kari_SAYMAZ(tmp_path):
     # komisyon disinda gerceklesmis bakiye degismemis olmali
     assert broker.realized_equity() < baslangic          # sadece komisyon dustu
     assert baslangic - broker.realized_equity() < 1.0
+
+
+# ===================================== ikinci denetim: bekleyen emir bulgulari
+def test_bekleyen_emrin_riski_sayilir(tmp_path):
+    """Bekleyenler henuz Position degil ama para taahhut edilmis. Sayilmazsa
+    ayni turdaki N aday da ayni 'acik risk'i gorur ve yastik tavani N kez
+    bagimsiz uygulanir -- tavan fiilen N katina cikar."""
+    cfg, market, broker, _ = _broker(tmp_path, [100.0] * 10)
+    assert broker.pending_risk() == 0.0
+    broker.open_position(_sig(100.0), qty=2.0, leverage=3)
+    # stop girisin %3 altinda -> risk = 3.0 * 2.0 = 6.0
+    assert broker.pending_risk() == pytest.approx(6.0)
+    broker.cancel_pending()
+    assert broker.pending_risk() == 0.0
+
+
+def test_gunluk_rapor_sinyal_olmadan_da_gonderilir(tmp_path, monkeypatch):
+    """Rapor eskiden _allocate'in son satirindaydi ve _allocate sinyal
+    yoksa erken donuyordu -- yani rapor ancak 4 sembol ayni anda sinyal
+    verdiginde cikabiliyordu."""
+    import inspect
+
+    from bot.engine import TradingEngine
+    kaynak = inspect.getsource(TradingEngine.tick)
+    assert "_maybe_daily_report" in kaynak, \
+        "gunluk rapor tick'ten cagrilmiyor - sinyale bagli kalmis"
+    alloc = inspect.getsource(TradingEngine._allocate)
+    assert "_maybe_daily_report" not in alloc, \
+        "rapor hala _allocate icinde - erken donuslerde atlanir"

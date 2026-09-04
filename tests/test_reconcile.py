@@ -3,6 +3,8 @@
 Bu kod yolu gercek parayla calisir ve borsayla konusur; testler sahte bir
 Binance istemcisiyle senaryolari suruyor.
 """
+import time
+
 import pytest
 
 from bot.config import Config
@@ -11,7 +13,9 @@ from bot.exchange.live import LiveBroker
 from bot.models import LONG, Position, SymbolFilters
 from bot.state import Store
 
-T0 = 1_700_000_000_000
+# Gercekci zaman: pozisyonlar gercek zamanda kapanir. Sabit bir gecmis
+# damga kullanmak, userTrades'in 6 gunluk penceresiyle catisirdi.
+T0 = int(time.time() * 1000) - 3_600_000
 
 
 class SahteBinance:
@@ -20,6 +24,8 @@ class SahteBinance:
         self.fills = []
         self.patlat = False
         self.emirler = []
+        # varsayilan: koruma emri borsada duruyor
+        self.acik_emirler = [{"type": "STOP_MARKET"}]
 
     def sync_time(self):
         pass
@@ -37,6 +43,17 @@ class SahteBinance:
 
     def cancel_all(self, sym):
         self.emirler.append(("cancel_all", sym))
+
+    def open_orders(self, sym):
+        return self.acik_emirler
+
+    def stop_market(self, sym, side, stop_price, client_id=""):
+        self.emirler.append(("stop", sym, side, stop_price, client_id))
+        return {}
+
+    def take_profit_market(self, sym, side, stop_price, qty=None, client_id=""):
+        self.emirler.append(("tp", sym, side, stop_price, qty, client_id))
+        return {}
 
     def cancel_order(self, sym, cid):
         self.emirler.append(("cancel", sym, cid))
@@ -144,3 +161,111 @@ def test_kismi_cikis_realized_pnl_biriktirir(tmp_path):
     assert p.qty == pytest.approx(1.0)
     assert p.tp1_filled
     assert store.load_positions()["BNBUSDT"].realized_pnl == pytest.approx(10.0)
+
+
+# ============================================ ikinci denetim: korektlik bulgulari
+def test_TP1_dolduysa_yeniden_konmaz(tmp_path):
+    """Fiyat TP1'in otesindeyken emri yeniden koymak ya borsa reddiyle
+    pozisyonu piyasadan kapattirir ya da kalan kosucuyu de satar. Iki
+    halde de 4R hedefine giden kisim olur."""
+    cfg, c, b, store = _kur(tmp_path)
+    p = _poz(qty=1.0)
+    p.tp1_filled = True                       # TP1 zaten dolmus
+    b._positions["BNBUSDT"] = p
+    c.emirler.clear()
+    b._place_protection(p, "SELL", c.filters("BNBUSDT"))
+    tipler = [e for e in c.emirler]
+    # sadece stop + tp2 konmali, tp1 KONMAMALI
+    assert not any("t1" in str(e) for e in tipler)
+
+
+def test_update_stop_kapanan_islemi_GERI_DONER(tmp_path):
+    """Koruma kurulamayip pozisyon kapatilirsa o islem deftere gecmeli;
+    yoksa gunluk zarar limiti ve ust uste zarar sayaci kaybi hic gormez."""
+    cfg, c, b, store = _kur(tmp_path)
+    b._positions["BNBUSDT"] = _poz(qty=1.0)
+    c.fills = [{"symbol": "BNBUSDT", "realizedPnl": "-30.0", "commission": "0.3",
+                "price": "580", "time": T0 + 10_000}]
+
+    def patla(*a, **k):
+        raise BinanceError(-2021, "would immediately trigger")
+
+    c.stop_market = patla
+    trade = b.update_stop("BNBUSDT", 600.0)
+    assert trade is not None, "kapanan islem yutuldu"
+    assert trade.pnl == pytest.approx(-30.3)
+
+
+def test_trade_context_canlida_TASINIR(tmp_path):
+    """Ogrenme katmani rejim kovasini trade.context'ten okur. Bos kalirsa
+    her islem adx=0/atr=0 kabul edilip tek kovaya dolar."""
+    cfg, c, b, store = _kur(tmp_path)
+    p = _poz(qty=1.0)
+    p.context = {"adx": 31.2, "atr_pct": 1.4}
+    b._positions["BNBUSDT"] = p
+    c.fills = [{"symbol": "BNBUSDT", "realizedPnl": "20.0", "commission": "0.2",
+                "price": "620", "time": T0 + 10_000}]
+    t = b._finalize(p, "tp2")
+    assert t.context.get("adx") == pytest.approx(31.2)
+    assert t.context.get("atr_pct") == pytest.approx(1.4)
+
+
+def test_borsada_stop_YOKSA_yeniden_kurulur(tmp_path):
+    """Tum guvenlik tasarimi 'koruma emri borsada durur' varsayimina
+    dayaniyordu ama hicbir yerde dogrulanmiyordu. Kullanici Binance
+    uygulamasindan stop'u iptal ederse reconcile bunu fark etmiyordu --
+    positionAmt degismedigi icin. Kaldiracli pozisyon 33 gune kadar
+    korumasiz tasinabiliyordu."""
+    cfg, c, b, store = _kur(tmp_path)
+    b._positions["BNBUSDT"] = _poz(qty=2.0)
+    c.pozisyonlar = [{"symbol": "BNBUSDT", "positionAmt": "2.0"}]
+    c.acik_emirler = []                    # kullanici stop'u iptal etti
+    c.emirler.clear()
+    b.reconcile()
+    assert any(e[0] == "stop" for e in c.emirler), "koruma yeniden kurulmadi"
+    assert "BNBUSDT" in b.positions(), "pozisyon gereksiz yere kapatildi"
+
+
+def test_koruma_duruyorsa_gereksiz_emir_gonderilmez(tmp_path):
+    cfg, c, b, store = _kur(tmp_path)
+    b._positions["BNBUSDT"] = _poz(qty=2.0)
+    c.pozisyonlar = [{"symbol": "BNBUSDT", "positionAmt": "2.0"}]
+    c.emirler.clear()
+    b.reconcile()
+    assert not c.emirler, f"koruma dururken emir gonderildi: {c.emirler}"
+
+
+def test_koruma_kurulamazsa_pozisyon_kapanir_ve_islem_DONER(tmp_path):
+    cfg, c, b, store = _kur(tmp_path)
+    b._positions["BNBUSDT"] = _poz(qty=1.0)
+    c.pozisyonlar = [{"symbol": "BNBUSDT", "positionAmt": "1.0"}]
+    c.acik_emirler = []
+    c.fills = [{"symbol": "BNBUSDT", "realizedPnl": "-15.0", "commission": "0.2",
+                "price": "585", "time": T0 + 10_000}]
+
+    def patla(*a, **k):
+        raise BinanceError(-2021, "reddedildi")
+
+    c.stop_market = patla
+    trades = b.reconcile()
+    assert len(trades) == 1, "korumasiz kapanan islem deftere gecmedi"
+    assert trades[0].pnl == pytest.approx(-15.2)
+
+
+def test_PnL_okunamazsa_ZARAR_sifir_yazilmaz(tmp_path):
+    """Eski davranis: userTrades patlayinca realized = pos.realized_pnl,
+    ki canlida hep 0'di. Gercek bir stop zarari pnl=0 kaydediliyordu ->
+    gunluk zarar limiti kaybi gormuyor, 'pnl < 0' yanlis oldugu icin ust
+    uste zarar sayaci SIFIRLANIYOR ve soguma hic tetiklenmiyordu."""
+    cfg, c, b, store = _kur(tmp_path)
+    p = _poz(qty=1.0)                     # giris 600, stop 580
+    b._positions["BNBUSDT"] = p
+
+    def patla(*a, **k):
+        raise BinanceError(-1003, "rate limit")
+
+    c.user_trades = patla
+    t = b._finalize(p, "borsada-kapandi", fallback_exit=p.stop)
+    assert t.pnl < 0, f"gercek zarar {t.pnl} olarak kaydedildi"
+    assert t.pnl == pytest.approx(-20.0)
+    assert "tahmini" in t.exit_reason

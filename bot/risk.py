@@ -297,8 +297,14 @@ class RiskGuard:
             self.state.realized_pnl_today = 0.0
             self.state.trades_today = 0
             self.state.day_start_equity = equity
-            self.state.halted = False
-            self.state.halt_reason = ""
+            # SADECE GUNLUK sebepler yeni gunde temizlenir. 'halted' bayragi
+            # gunluk zarar limiti, gunluk kar hedefi ve "edge oldu" icin
+            # ortak kullaniliyor; hepsini gece yarisi silmek, istatistiksel
+            # olarak KANITLANMIS bozuk bir stratejinin 00:00 UTC'de
+            # kendiliginden yeniden calismasi demekti.
+            if self.state.halted and self.state.halt_reason.startswith("gunluk"):
+                self.state.halted = False
+                self.state.halt_reason = ""
         if self.state.day_start_equity <= 0:
             self.state.day_start_equity = equity
 

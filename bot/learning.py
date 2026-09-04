@@ -265,7 +265,7 @@ class Learner:
         return True, "ok"
 
     def risk_multiplier(self, symbol: str, context: Dict[str, float],
-                        equity: float) -> Tuple[float, str]:
+                        equity: float, now_ms: Optional[int] = None) -> Tuple[float, str]:
         """Risk butcesi carpani. 1.0 = normal, 0.4 = en kucuk.
 
         Iki bagimsiz kaynak:
@@ -274,6 +274,7 @@ class Learner:
         """
         if not self.lc.enabled:
             return 1.0, ""
+        now_ms = now_ms if now_ms is not None else int(time.time() * 1000)
         lc = self.lc
         reasons = []
         mult = 1.0
@@ -296,7 +297,11 @@ class Learner:
                 reasons.append(f"{symbol} kanitlanmis edge {est:+.3f}R (n={b.n})")
 
         # Probation: bank suresi bitmis ama gecmisi kotu olan kova kucuk baslar
-        if b and b.bench_count > 0 and b.benched_until_ms <= 0:
+        # Banktan YENI CIKMIS kova gozetim altinda kucuk risk alir.
+        # Eski kosul 'benched_until_ms <= 0' idi; o alan hicbir zaman
+        # 0'a geri donmedigi icin kosul TATMIN EDILEMEZDI ve gozetim
+        # carpani hic uygulanmadi.
+        if b and b.bench_count > 0 and 0 < b.benched_until_ms <= now_ms:
             mult *= lc.probation_multiplier
             reasons.append("gozetim altinda")
 
