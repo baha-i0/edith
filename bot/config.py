@@ -47,6 +47,15 @@ class RiskConfig:
     # Stop, likidasyon mesafesinin bu oranindan uzak olamaz (0.6 = %60).
     max_stop_vs_liquidation: float = 0.6
     min_free_margin_pct: float = 25.0
+    # Ayni yonde en fazla kac pozisyon. 0 = sinirsiz.
+    # OLCULDU: sinirlamak zarar veriyor. Ayni yonde 3-4 pozisyon acikken
+    # girilen islemler +0.234R, yalniz girilenler -0.024R. Sebep mekanik:
+    # bircok sembol ayni anda ayni yonu gosteriyorsa piyasa geneli tutarli
+    # bir trend var demektir; trend takibi tam orada calisir.
+    max_same_direction: int = 0
+    # Giris icin gereken minimum "genislik": ayni yonde es zamanli sinyal
+    # veren sembol sayisi. 1 = filtre yok.
+    min_breadth: int = 1
 
 
 @dataclass

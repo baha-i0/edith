@@ -502,10 +502,30 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
                     if validate_signal_quality(sig, cfg)[0]:
                         candidates.append((sig.meta.get("adx", 0.0), sig.reward_risk, sym, sig))
                 candidates.sort(key=lambda c: (-c[0], -c[1], c[2]))
+
+                # Genislik filtresi: ayni yonde kac sembol es zamanli sinyal
+                # veriyor? Piyasa geneli tutarliligin olcusu.
+                if cfg.risk.min_breadth > 1:
+                    side_counts: Dict[str, int] = {}
+                    for _a, _r, _s, sg in candidates:
+                        side_counts[sg.side] = side_counts.get(sg.side, 0) + 1
+                    candidates = [c for c in candidates
+                                  if side_counts.get(c[3].side, 0) >= cfg.risk.min_breadth]
+
                 free = cfg.risk.max_concurrent_positions - len(positions) - len(pending)
-                for _adx, _rr, sym, sig in candidates[:max(0, free)]:
+                cap = cfg.risk.max_same_direction
+                taken = 0
+                for _adx, _rr, sym, sig in candidates:
+                    if taken >= max(0, free):
+                        break
+                    if cap > 0:
+                        same = sum(1 for p in positions.values() if p.side == sig.side)
+                        same += sum(1 for g in pending.values() if g.side == sig.side)
+                        if same >= cap:
+                            continue
                     pending[sym] = sig
-                res.blocked_by_slots += max(0, len(candidates) - max(0, free))
+                    taken += 1
+                res.blocked_by_slots += max(0, len(candidates) - taken)
             else:
                 res.blocked_by_guard += 1
 

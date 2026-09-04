@@ -11,7 +11,7 @@ from bot.config import Config
 from bot.engine import TradingEngine
 from bot.exchange.base import MarketData
 from bot.exchange.paper import PaperBroker
-from bot.models import LONG, Candle, Signal, SymbolFilters
+from bot.models import LONG, SHORT, Candle, Signal, SymbolFilters
 from bot.state import Store
 from bot.strategy import TrendPullbackStrategy
 from conftest import make_candles
@@ -365,3 +365,104 @@ def test_daily_report_explains_shadow_mode(tmp_path, monkeypatch, trending_up):
     text = engine.daily_report(now)
     assert "GOLGE MODU" in text
     assert "kendiliginden canliya doner" in text
+
+
+# ------------------------------------------------ genislik filtresi (parite)
+def _multi_engine(tmp_path, candles, symbols, **risk_over):
+    """Cok sembollu motor: genislik filtresi ancak boyle test edilebilir."""
+    from bot.config import Config
+    from bot.state import Store
+    from bot.exchange.paper import PaperBroker
+    from bot.engine import TradingEngine
+    cfg = Config()
+    cfg.symbols = list(symbols)
+    cfg.state_path = str(tmp_path / "b.db")
+    cfg.account.paper_start_balance = 5000.0
+    for k, v in risk_over.items():
+        setattr(cfg.risk, k, v)
+    cfg.validate()
+    market = FakeMarket(candles)
+    store = Store(cfg.state_path, mode="paper")
+    broker = PaperBroker(cfg, market, store)
+    return TradingEngine(cfg, market, broker, store), broker
+
+
+def _side_signal(monkeypatch, side_for):
+    """Sembole gore yon ureten sahte strateji."""
+    def fake(self, symbol, candles, features=None, index=None):
+        side = side_for(symbol)
+        if side is None:
+            return None
+        px = candles[-1].close
+        d = px * 0.02
+        if side == LONG:
+            return Signal(symbol, LONG, px, px - d, px + d, px + 2.5 * d,
+                          atr=d, reason="t", meta={"adx": 30})
+        return Signal(symbol, SHORT, px, px + d, px - d, px - 2.5 * d,
+                      atr=d, reason="t", meta={"adx": 30})
+    monkeypatch.setattr(TrendPullbackStrategy, "evaluate", fake)
+
+
+def test_breadth_filter_blocks_lonely_signal(tmp_path, monkeypatch, trending_up):
+    """Tek basina gelen sinyal alinmamali -- olculen en buyuk iyilestirme."""
+    syms = ["AUSDT", "BUSDT", "CUSDT", "DUSDT"]
+    engine, broker = _multi_engine(tmp_path, trending_up, syms, min_breadth=4)
+    _side_signal(monkeypatch, lambda s: LONG if s == "AUSDT" else None)
+    engine.tick()
+    assert broker.positions() == {}, "yalniz sinyal genislik filtresini gecti"
+
+
+def test_breadth_filter_allows_coherent_market(tmp_path, monkeypatch, trending_up):
+    syms = ["AUSDT", "BUSDT", "CUSDT", "DUSDT"]
+    engine, broker = _multi_engine(tmp_path, trending_up, syms, min_breadth=4)
+    _side_signal(monkeypatch, lambda s: LONG)
+    engine.tick()
+    assert len(broker.positions()) > 0, "tutarli piyasada hic pozisyon acilmadi"
+
+
+def test_breadth_counts_per_direction(tmp_path, monkeypatch, trending_up):
+    """3 long + 1 short, esik 3 -> sadece longlar gecmeli."""
+    syms = ["AUSDT", "BUSDT", "CUSDT", "DUSDT"]
+    engine, broker = _multi_engine(tmp_path, trending_up, syms,
+                                   min_breadth=3, max_concurrent_positions=4)
+    _side_signal(monkeypatch, lambda s: SHORT if s == "DUSDT" else LONG)
+    engine.tick()
+    sides = {s: p.side for s, p in broker.positions().items()}
+    assert sides, "hic pozisyon acilmadi"
+    assert SHORT not in sides.values(), "yalniz kalan short genislik filtresini gecti"
+
+
+def test_breadth_disabled_by_default_value_one(tmp_path, monkeypatch, trending_up):
+    syms = ["AUSDT", "BUSDT"]
+    engine, broker = _multi_engine(tmp_path, trending_up, syms, min_breadth=1)
+    _side_signal(monkeypatch, lambda s: LONG if s == "AUSDT" else None)
+    engine.tick()
+    assert "AUSDT" in broker.positions()
+
+
+def test_same_direction_cap_when_enabled(tmp_path, monkeypatch, trending_up):
+    syms = ["AUSDT", "BUSDT", "CUSDT", "DUSDT"]
+    engine, broker = _multi_engine(tmp_path, trending_up, syms,
+                                   min_breadth=1, max_same_direction=2,
+                                   max_concurrent_positions=4)
+    _side_signal(monkeypatch, lambda s: LONG)
+    engine.tick()
+    assert len(broker.positions()) <= 2
+
+
+def test_allocation_prefers_stronger_signal(tmp_path, monkeypatch, trending_up):
+    """Slot yetmiyorsa liste sirasina gore degil, ADX'e gore secilmeli."""
+    syms = ["AUSDT", "BUSDT", "CUSDT"]
+    engine, broker = _multi_engine(tmp_path, trending_up, syms,
+                                   min_breadth=1, max_concurrent_positions=1)
+
+    def fake(self, symbol, candles, features=None, index=None):
+        px = candles[-1].close
+        d = px * 0.02
+        adx = {"AUSDT": 22.0, "BUSDT": 45.0, "CUSDT": 30.0}[symbol]
+        return Signal(symbol, LONG, px, px - d, px + d, px + 2.5 * d,
+                      atr=d, reason="t", meta={"adx": adx})
+
+    monkeypatch.setattr(TrendPullbackStrategy, "evaluate", fake)
+    engine.tick()
+    assert list(broker.positions()) == ["BUSDT"], "en guclu sinyal secilmedi"

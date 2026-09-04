@@ -89,43 +89,81 @@ sicramalar gorurduk.
 Dikkat cekici: altcoinlerin cogu al-tut'ta -%60 ile -%99 arasi kaybederken
 bot pozitifti -- dusus trendlerini short tarafindan yakaladigi icin.
 
-### 4. Portfoy backtesti (sevk edilen config: 15 sembol, 4 slot, risk %0.75)
+### 3.5 Genislik filtresi -- olculen en buyuk tek iyilestirme
+
+Bir sinyal ancak **ayni yonde en az 4 sembol es zamanli sinyal veriyorsa**
+alinir. Mekanizma: bircok sembol ayni anda ayni yonu gosteriyorsa piyasa
+geneli tutarli bir trend var demektir; trend takibi tam orada calisir.
+Tek basina gelen sinyal gurultudur.
+
+| genislik | islem | isabet | yillik | maks dusus | beklenti |
+|---|---|---|---|---|---|
+| 1 (filtre yok) | 907 | 45.4% | +10.9% | 18.6% | +0.091R |
+| 2 | 622 | 47.1% | +10.7% | 14.7% | +0.128R |
+| **4** | **292** | **52.7%** | **+11.4%** | **11.3%** | **+0.262R** |
+| 6 | 109 | 55.0% | +4.0% | 8.5% | +0.261R |
+| 8 | 35 | 60.0% | +2.5% | 3.7% | +0.496R |
+
+Dusus **monoton** azaliyor, isabet **monoton** artiyor -- tepe noktasi degil,
+gercek bir iliski. Uc bagimsiz dogrulama:
+
+| Test | Sonuc |
+|---|---|
+| Zaman disi (ikinci yari) | beklenti +0.068R -> +0.185R |
+| Son 1.5 yil (OOS) | +0.077R -> +0.117R |
+| Farkli evren (20 sembol) | kusursuz monoton: +0.077 -> +0.130 -> +0.159 -> +0.216 -> +0.255 |
+
+**Reddedilen hipotez:** "korelasyon riskini sinirla, ayni yonde en fazla N
+pozisyon." Veri tam tersini soyledi -- ayni yonde 3-4 pozisyon acikken
+girilen islemler +0.234R, yalniz girilenler -0.024R. Sinirlamak en iyi
+islemleri kesiyor (max=1 denendiginde yillik %10.9 -> %4.3). Genislik bir
+risk degil, bir SINYAL.
+
+### 4. Portfoy backtesti (sevk edilen config: 15 sembol, 6 slot, risk %0.75)
 
 Tek sembol backtesti yaniltir; ortak kasa ve es zamanli pozisyon limiti yokmus
 gibi davranir. Gercek sayi bu:
 
 ```
 Sure             : 4.9 yil
-Equity           : 200.00 -> 386.48 (+93.2%)
-Yillik bilesik   : +14.2%
-Islem            : 877  (177/yil)
-Isabet / PF      : %46.2 / 1.19
-Beklenti         : +0.112 R/islem
-Maks. dusus      : 21.4%
-t-degeri (kaba)  : 2.63
+Equity           : 200.00 -> 375.32 (+87.7%)
+Yillik bilesik   : +13.6%
+Islem            : 334  (68/yil)
+Isabet / PF      : %54.5 / 1.58
+Beklenti         : +0.277 R/islem
+Maks. dusus      : 14.1%
+t-degeri (kaba)  : 4.11
 ```
 
-Slot sayisinin etkisi (20 sembol, risk %0.75 sabit):
+Genislik filtresinden ONCE ve SONRA:
 
-| es zamanli pozisyon | yillik bilesik | maks. dusus |
-|---------------------|----------------|-------------|
-| 2                   | +7.4%          | 16.8%       |
-| 4                   | +14.2%         | 21.4%       |
-| 5                   | +15.4%         | 23.6%       |
-| 8                   | +22.5%         | 23.8%       |
+| | eski | yeni | fark |
+|---|---|---|---|
+| Isabet orani | 45.4% | **54.5%** | +9.1 puan |
+| Yillik bilesik | +10.9% | **+13.6%** | +25% |
+| Maks. dusus | 18.6% | **14.1%** | -24% |
+| Beklenti | +0.091R | **+0.277R** | 3x |
+| t-degeri | 2.16 | **4.11** | 2x |
 
-**Kucuk bir edge'i buyutmenin yolu kaldirac degil, genislik.** Kaldirac hem
-getiriyi hem riski buyutur; daha cok sembol getiriyi buyutup riski goreceli
-sabit tutar (korelasyon sinirina kadar).
+Ayni riskle daha yuksek getiri ve daha dusuk dusus. Kaldirac artirilmadi --
+`risk_per_trade_pct` hala %0.75. Test edildi: %1.0'a cikarmak yilligi
+%20.4'e tasiyor ama dususu %18.5'e cikariyor ve **son 1.5 yilda oran
+kotulesiyor** (0.45 -> 0.41). Yani o sadece kaldirac, iyilestirme degil.
+
+**Kucuk bir edge'i buyutmenin yolu kaldirac degil, secicilik ve genislik.**
 
 ### 5. Zaman disi dogrulama
 
 | donem              | yil | islem | yillik | beklenti | t    |
 |--------------------|-----|-------|--------|----------|------|
-| tamami             | 4.9 | 935   | +11.8% | +0.088   | 2.15 |
-| ilk yari           | 2.4 | 422   | +14.8% | +0.113   | 1.82 |
-| ikinci yari (OOS)  | 2.5 | 509   | +8.6%  | +0.063   | 1.14 |
-| son 1 yil (OOS)    | 1.0 | 220   | +14.0% | +0.082   | 0.95 |
+| tamami             | 4.9 | 358   | +14.8% | +0.277   | 4.11 |
+| ilk yari           | 2.4 | 162   | +21.4% | +0.401   | 4.03 |
+| ikinci yari (OOS)  | 2.5 | 192   | +10.2% | +0.188   | 2.31 |
+| son 1.5 yil (OOS)  | 1.5 | 125   | +6.3%  | +0.114   | 1.03 |
+
+Beklenti zaman icinde **dusuyor** (+0.401 -> +0.188 -> +0.114). Bu eski
+config'de de vardi (+0.113 -> +0.068 -> +0.077). Edge asinmasi mi, gurultu
+mu -- ayirt edecek veri yok. Duz gecen bir yil normaldir.
 
 ---
 
@@ -536,7 +574,7 @@ sinyali. Cikis: %50'si 1R'de (islem bedava hale gelir), kalani 4R'de veya
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest tests/ -q      # 154 test
+python -m pytest tests/ -q      # 160 test
 ```
 
 Testler sadece "calisiyor mu"yu degil, **kaybetmeyi reddediyor mu**yu de

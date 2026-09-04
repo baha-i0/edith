@@ -93,13 +93,73 @@ class TradingEngine:
             for trade in self.broker.reconcile():
                 self._on_trade_closed(trade, now)
 
+        # Faz 1: acik pozisyonlari yonet ve aday sinyalleri TOPLA.
+        # Karar bu fazda verilmez -- genislik filtresi portfoy seviyesinde
+        # calisir, tek sembole bakarak hesaplanamaz. Backtest de tam olarak
+        # boyle calisiyor; parite sart, yoksa backtest yalan soyler.
+        candidates: List[tuple] = []
         for symbol in self.cfg.symbols:
             try:
-                self.process_symbol(symbol, now, equity)
+                sig = self.process_symbol(symbol, now, equity)
+                if sig is not None:
+                    candidates.append(sig)
             except Exception:
                 log.exception("%s islenirken hata", symbol)
 
+        # Faz 2: portfoy seviyesinde secim
+        try:
+            self._allocate(candidates, now, equity)
+        except Exception:
+            log.exception("Sinyal dagitimi basarisiz")
+
         self._maybe_health_check(now)
+
+    def _allocate(self, candidates: List[tuple], now: int, equity: float) -> None:
+        """Aday sinyaller arasindan slot dagitimi.
+
+        Iki kural:
+          1. GENISLIK -- ayni yonde en az N sembol es zamanli sinyal vermeli.
+             Olculdu: piyasa geneli tutarli oldugunda trend takibi calisiyor,
+             tek basina gelen sinyal calismiyor (+0.277R vs +0.091R).
+          2. KALITE SIRASI -- slot yetmiyorsa once yuksek ADX, sonra genis R:R.
+             Liste sirasina gore secmek gizli yanlilik yaratir.
+        """
+        if not candidates:
+            return
+        r = self.cfg.risk
+
+        if r.min_breadth > 1:
+            side_counts: Dict[str, int] = {}
+            for _adx, _rr, _sym, sg in candidates:
+                side_counts[sg.side] = side_counts.get(sg.side, 0) + 1
+            before = len(candidates)
+            candidates = [c for c in candidates
+                          if side_counts.get(c[3].side, 0) >= r.min_breadth]
+            if before != len(candidates):
+                log.info("Genislik filtresi: %d adaydan %d kaldi (esik %d, dagilim %s)",
+                         before, len(candidates), r.min_breadth, side_counts)
+        if not candidates:
+            return
+
+        candidates.sort(key=lambda c: (-c[0], -c[1], c[2]))
+        shadow_on = self.guard.state.shadow_mode and self.cfg.shadow.enabled
+
+        for _adx, _rr, symbol, sig in candidates:
+            positions = self.broker.positions()
+            if symbol in positions:
+                continue
+            if r.max_same_direction > 0:
+                same = sum(1 for p in positions.values() if p.side == sig.side)
+                if same >= r.max_same_direction:
+                    continue
+            # Golgede para riski yok; gunluk limitler olcumu durdurmamali,
+            # yoksa "canliya donus" karari eksik veriye dayanir.
+            if not shadow_on:
+                allowed, why = self.guard.can_open(now, len(positions), equity)
+                if not allowed:
+                    log.debug("giris kapali (%s)", why)
+                    return
+            self._enter(symbol, sig, now, equity)
         self._maybe_daily_report(now)
 
     def _maybe_daily_report(self, now: int) -> None:
@@ -260,13 +320,19 @@ class TradingEngine:
             self.notifier.send(f"[{c.severity.upper()}] {c.name}\n{c.message}"
                                + (f"\n\nYAP: {c.action}" if c.action else ""))
 
-    def process_symbol(self, symbol: str, now: int, equity: float) -> None:
+    def process_symbol(self, symbol: str, now: int, equity: float):
+        """Bir sembolu isler. Acik pozisyonu yonetir; yeni sinyal varsa
+        ADAY olarak doner (girisi burada YAPMAZ).
+
+        Girisin burada yapilmamasi kasitli: genislik filtresi tum sembollerin
+        sinyallerini ayni anda gormeyi gerektiriyor.
+        """
         candles = self.market.klines(symbol, self.cfg.timeframe,
                                      limit=self.cfg.strategy.warmup_bars)
         closed = [c for c in candles if c.closed]
         if len(closed) < self.cfg.strategy.ema_slow + 20:
             log.warning("%s: yeterli mum yok (%d)", symbol, len(closed))
-            return
+            return None
 
         feats = Features(closed, self.cfg.strategy)
         last = closed[-1]
@@ -276,7 +342,7 @@ class TradingEngine:
         pos = self.broker.positions().get(symbol)
         if pos:
             self._manage(pos, last, feats, now)
-            return
+            return None
 
         shadow_on = self.guard.state.shadow_mode and self.cfg.shadow.enabled
 
@@ -285,28 +351,22 @@ class TradingEngine:
             r = self.shadow.update(symbol, last, feats.atr[-1] or 0.0, now)
             if r is not None:
                 self._maybe_resume_live(now)
-            return
+            return None
 
         # Ayni mumda birden fazla giris denemesi yok
         if self._last_bar.get(symbol) == last.open_time:
-            return
-
-        if not shadow_on:
-            allowed, why = self.guard.can_open(now, len(self.broker.positions()), equity)
-            if not allowed:
-                log.debug("%s: giris kapali (%s)", symbol, why)
-                return
+            return None
 
         sig = self.strategy.evaluate(symbol, closed, feats)
         if not sig:
-            return
+            return None
         self._last_bar[symbol] = last.open_time
 
         # --- Ogrenme kapisi: kanitlanmis negatif kova / tekrarlayan hata ---
         learn_ok, learn_why = self.learner.allow_entry(symbol, sig.meta, now)
         if not learn_ok:
             log.info("%s ogrenme kapisi: %s", symbol, learn_why)
-            return
+            return None
 
         # --- Ogrenilmis stop genisletmesi (R katlari korunur) ---
         self._apply_learned_stop(sig, symbol)
@@ -314,12 +374,18 @@ class TradingEngine:
         ok, reason = validate_signal_quality(sig, self.cfg)
         if not ok:
             log.info("%s sinyal elendi: %s", symbol, reason)
-            return
+            return None
         if not self._microstructure_ok(symbol, now):
-            return
+            return None
 
-        # --- Golge modu: sinyal gercek, emir sanal ---
-        if shadow_on:
+        return (sig.meta.get("adx", 0.0), sig.reward_risk, symbol, sig)
+
+    def _enter(self, symbol: str, sig, now: int, equity: float) -> None:
+        """Secilmis bir sinyali gercek (ya da golge modunda sanal) pozisyona cevirir."""
+        # Golge modunda sinyal gercek, emir sanal. Ayni genislik filtresinden
+        # gectigi icin golge olcumu canli davranisla ayni kalir -- yoksa
+        # "canliya donus" karari yanlis bir sistemin sinavina dayanirdi.
+        if self.guard.state.shadow_mode and self.cfg.shadow.enabled:
             self.shadow.open(sig, now)
             return
 
