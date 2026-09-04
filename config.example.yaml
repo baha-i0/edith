@@ -1,0 +1,98 @@
+# ============================================================================
+# EDITH trading bot - ornek konfigurasyon
+# Kopyala:  cp config.example.yaml config.yaml
+# ============================================================================
+
+mode: paper            # paper | testnet | live  (CLI komutu bunu ezer)
+# GENISLIK = getirinin ana kaldiraci.
+# Kucuk ama pozitif bir edge'i buyutmenin yolu kaldirac degil, daha cok
+# bagimsiz islem. Portfoy backtesti (20 sembol, 5 yil, risk %0.75):
+#   2 slot -> yillik %7.4  | 5 slot -> yillik %15.4 | 8 slot -> yillik %22.5
+# Dusus her ucunde ~%24 civari. Yani slot artirmak riski ayni tutup
+# getiriyi buyutuyor -- kaldirac artirmak ise ikisini birden buyutur.
+# UYARI: kripto pozisyonlari yuksek korelasyonlu. 5 acik long, cokuste
+# tek buyuk pozisyon gibi davranir. 4 slot bilincli bir orta yol.
+symbols:
+  - BTCUSDT
+  - ETHUSDT
+  - BNBUSDT
+  - SOLUSDT
+  - XRPUSDT
+  - ADAUSDT
+  - DOGEUSDT
+  - AVAXUSDT
+  - LINKUSDT
+  - DOTUSDT
+  - LTCUSDT
+  - ATOMUSDT
+  - TRXUSDT
+  - UNIUSDT
+  - AAVEUSDT
+# 4h SECILDI, keyfi degil: 5 sembol / 5 yil backtest sonucu (bkz. README "Kanit")
+#   5m  -> -0.30R/islem   15m -> -0.25R   1h -> -0.056R   4h -> +0.056R
+# Sebep: komisyon+slipaj fiyatin %0.14'u. Stop mesafesi %0.5 ise bu 0.28R,
+# stop %3 ise 0.05R. Kisa zaman dilimi = dar stop = komisyonun yendigi oyun.
+timeframe: 4h
+loop_seconds: 60
+state_path: data/bot.db
+log_path: logs/bot.log
+
+account:
+  quote_asset: USDT
+  leverage: 5          # ISTENEN kaldirac. Gercek kaldirac stop mesafesine gore asagi cekilir.
+  margin_type: ISOLATED   # Her zaman ISOLATED: bir islem tum hesabi likide edemesin
+  paper_start_balance: 200
+
+risk:
+  # --- Buradaki tek sayi, botun karakterini belirler ---
+  risk_per_trade_pct: 0.75    # Tek islemde equity'nin %0.75'i. 200$ hesapta = 1.50$ risk.
+  max_leverage: 10            # Sert tavan. Stop mesafesi gerektirirse bot bunu da kullanmaz.
+  max_position_notional_pct: 300   # Notional tavani (equity'nin %'si)
+  daily_loss_limit_pct: 4     # Gunluk -%4'te bot kendini kapatir (UTC gunu)
+  daily_profit_target_pct: 6  # Gunluk +%6'da durur. Kazandiktan sonra devam etmek en pahali aliskanlik.
+  max_trades_per_day: 8      # 15 sembolde 4h; bu bir emniyet supabi
+  max_concurrent_positions: 4   # bkz. yukaridaki genislik/korelasyon notu
+  max_consecutive_losses: 3
+  cooldown_minutes_after_loss: 20
+  cooldown_minutes_after_streak: 240
+  min_reward_risk: 1.5        # Bunun altina inme. 1.5R altinda beklenti komisyona yenilir.
+  max_stop_vs_liquidation: 0.6  # Stop, likidasyon mesafesinin en fazla %60'i kadar uzakta olabilir
+  min_free_margin_pct: 25     # Serbest marjin %25'i her zaman bos kalir
+
+strategy:
+  name: trend_pullback
+  ema_fast: 20
+  ema_mid: 50
+  ema_slow: 200
+  rsi_period: 14
+  atr_period: 14
+  adx_period: 14
+  min_adx: 22            # Yatay piyasada islem yok. Yukselt -> daha az ama daha secici islem.
+  rsi_long_min: 45
+  rsi_long_max: 72       # Asiri uzamis fiyati kovalama
+  rsi_short_min: 28
+  rsi_short_max: 55
+  atr_pct_min: 0.30      # ATR/fiyat < %0.30 -> hareket komisyonu karsilamaz
+  atr_pct_max: 2.5       # ATR/fiyat > %2.5 -> yuksek volatilitede beklenti duser (monoton, bkz README)
+  pullback_lookback: 6
+  swing_lookback: 10
+  stop_atr_mult: 2.5     # Stop mesafesi tavani (ATR cinsinden). Genis stop = dusuk komisyon yuku.
+  stop_buffer_atr: 0.25
+  tp1_r: 1.0             # Pozisyonun yarisi 1R'de alinir -> islem bedava hale gelir
+  tp1_size_pct: 50
+  tp2_r: 4.0             # Kalan yarim 4R'de veya iz suren stopta (kazananlar kossun)
+  breakeven_at_r: 1.0
+  trail_atr_mult: 3.0
+  max_bars_in_trade: 200 # 4h'te ~33 gun. Trend takibinde erken cikmak en pahali hatadir.
+  warmup_bars: 300
+
+execution:
+  taker_fee: 0.0005      # BNB ile komisyon odersen 0.00045'e duser
+  maker_fee: 0.0002
+  slippage_bps: 2
+  max_spread_bps: 6      # Spread bundan genisse islem yok
+  avoid_funding_minutes: 10
+  funding_rate_abort: 0.0006
+  recv_window: 5000
+  request_timeout: 10
+  max_retries: 4
