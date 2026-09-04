@@ -20,7 +20,8 @@ from typing import Dict, List, Optional, Sequence
 from .config import Config
 from .models import LONG, SHORT, Candle, Position, SymbolFilters, Trade
 from .learning import Learner
-from .risk import RiskGuard, RiskState, size_position, validate_signal_quality
+from .risk import (RiskGuard, RiskState, open_risk_total, size_position,
+                   update_floor, validate_signal_quality)
 from .strategy import Features, build_strategy
 
 FUNDING_INTERVAL_MS = 8 * 3600 * 1000
@@ -449,8 +450,11 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
                 if mult != 1.0:
                     risk_cfg = replace(risk_cfg,
                                        risk_per_trade_pct=risk_cfg.risk_per_trade_pct * mult)
+            update_floor(risk_cfg, guard.state, equity)
             sizing = size_position(equity, equity, entry, sig.stop + drift, f,
-                                   risk_cfg, cfg.account.leverage)
+                                   risk_cfg, cfg.account.leverage,
+                                   open_risk=open_risk_total(positions.values()),
+                                   state=guard.state)
             if not sizing.ok:
                 continue
             fee = entry * sizing.qty * entry_fee_rate

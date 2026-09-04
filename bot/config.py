@@ -53,6 +53,44 @@ class RiskConfig:
     # bircok sembol ayni anda ayni yonu gosteriyorsa piyasa geneli tutarli
     # bir trend var demektir; trend takibi tam orada calisir.
     max_same_direction: int = 0
+    # ---------------------------------------------------------------- taban
+    # SERMAYE TABANI (USDT). 0 = kapali.
+    #
+    # Fikir: paranin tamamini degil, sadece "kaybetmeyi goze aldigin"
+    # kismini riske at. Taban 170 ve bakiye 300 ise, bot 130 USDT'lik
+    # YASTIK uzerinden pozisyon boyutlandirir -- 300 uzerinden degil.
+    #
+    # Kritik ozellik: bakiye dustukce yastik kucululur, pozisyonlar da
+    # kendiliginden kucululur. 300 -> 250 -> 200 giderken risk 130 -> 80
+    # -> 30 USDT uzerinden hesaplanir. Taban yaklastikca bot yavaslar ve
+    # tabana varmadan durur. Bu yontemin adi CPPI; sigorta sektorunun
+    # 1980'lerden beri kullandigi bir yapi.
+    #
+    # DURUSTCE: bu taban GARANTI DEGIL. Fiyat stop seviyesini atlayip
+    # asagida acilirsa (gap) zarar hesaplanandan buyuk olur. Kripto
+    # hafta sonu da isler ama sert haberlerde saniyeler icinde %10
+    # atlayabilir. Taban "cok buyuk ihtimalle korunur", "matematiksel
+    # olarak korunur" degil.
+    capital_floor_usdt: float = 0.0
+    # TABAN YUKSELIR: zirve bakiyenin bu yuzdesi kadar. 0 = sabit taban.
+    #
+    # Sabit taban bir sorun yaratir: hesap 300 -> 5000 buyurse yastik
+    # 130 -> 4830 olur, yani kar ettikce ORANSAL OLARAK daha cok risk
+    # alirsin. Cirpinan taban bunu duzeltir: bakiye 5000'e cikarsa taban
+    # 5000 * %80 = 4000 olur ve bir daha ASLA dusmez. Kazanilan para
+    # kilitlenir; sadece son dilim riske girer.
+    #
+    # Taban her zaman ikisinin BUYUGU: capital_floor_usdt ve
+    # zirve * capital_floor_ratchet_pct.
+    capital_floor_ratchet_pct: float = 0.0
+    # Yastik bunun altina duserse bot tamamen durur ve haber verir.
+    # Amac: 5 USDT yastikla mikro islemler yapip komisyona yedirmemek.
+    min_cushion_usdt: float = 25.0
+    # AYNI ANDA acik tum pozisyonlarin toplam riski, yastigin en fazla
+    # yuzde kaci olabilir. Tek islem tabani delemez ama 4 islem birden
+    # ters giderse delebilir -- bu tavan onu engeller.
+    max_total_risk_pct_of_cushion: float = 30.0
+
     # Giris icin gereken minimum "genislik": ayni yonde es zamanli sinyal
     # veren sembol sayisi. 1 = filtre yok.
     min_breadth: int = 1
@@ -263,8 +301,39 @@ class Config:
         if self.loop_seconds < 5:
             errs.append("loop_seconds >= 5 olmali (rate limit)")
 
-        if not 0 < r.risk_per_trade_pct <= 2.0:
-            errs.append("risk_per_trade_pct 0 ile 2.0 arasinda olmali (tek islemde equity'nin %2'sinden fazlasi kumar)")
+        # Taban varsa risk YASTIK uzerinden olculur, equity uzerinden degil.
+        # Yastik daha kucuk bir taban oldugu icin ayni yuzde daha az mutlak
+        # risk demektir; bu yuzden tavan daha yuksek olabilir. Ama sinirsiz
+        # degil: yastigin %6'si, yastigin 17 islemde bitmesi demektir.
+        _taban_var = r.capital_floor_usdt > 0 or r.capital_floor_ratchet_pct > 0
+        _risk_cap = 6.0 if _taban_var else 2.0
+        if not 0 < r.risk_per_trade_pct <= _risk_cap:
+            if _taban_var:
+                errs.append(
+                    f"risk_per_trade_pct 0 ile {_risk_cap} arasinda olmali. Taban "
+                    "tanimliyken bu yuzde YASTIGA uygulanir (bakiye - taban); "
+                    "yastigin %6'sindan fazlasi tek islemde kumar.")
+            else:
+                errs.append("risk_per_trade_pct 0 ile 2.0 arasinda olmali "
+                            "(tek islemde equity'nin %2'sinden fazlasi kumar)")
+
+        if r.capital_floor_usdt < 0:
+            errs.append("capital_floor_usdt negatif olamaz")
+        if not 0 <= r.capital_floor_ratchet_pct < 100:
+            errs.append("capital_floor_ratchet_pct 0-99 arasinda olmali "
+                        "(100 = hic islem yapilamaz)")
+        if _taban_var:
+            if r.min_cushion_usdt <= 0:
+                errs.append("min_cushion_usdt > 0 olmali")
+            if not 0 < r.max_total_risk_pct_of_cushion <= 100:
+                errs.append("max_total_risk_pct_of_cushion 0-100 arasinda olmali")
+            # Tek islemin riski toplam tavani asamaz: asarsa ilk islem bile
+            # acilmaz ve bot sessizce hicbir sey yapmaz.
+            if r.risk_per_trade_pct > r.max_total_risk_pct_of_cushion:
+                errs.append(
+                    f"risk_per_trade_pct ({r.risk_per_trade_pct}) > "
+                    f"max_total_risk_pct_of_cushion ({r.max_total_risk_pct_of_cushion}). "
+                    "Tek islem toplam tavani asamaz, yoksa hicbir islem acilmaz.")
         if not 1 <= a.leverage <= r.max_leverage:
             errs.append(f"leverage 1..{r.max_leverage} araliginda olmali")
         if r.max_leverage > 20:

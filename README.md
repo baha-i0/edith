@@ -220,6 +220,107 @@ hata degil: bot market'e duser.
 
 ---
 
+## Sermaye tabani: "paramin su kadarini kesin korusun"
+
+Bakiyenin tamamini degil, sadece kaybetmeyi goze aldigin kismini riske
+atmak. **Yastik = bakiye - taban.** Bakiye dustukce yastik kucululur,
+pozisyonlar da kendiliginden kucululur; taban yaklastikca bot yavaslar ve
+tabana varmadan durur. Yontemin adi CPPI; sigorta sektorunun 1980'lerden
+beri kullandigi bir yapi.
+
+### Ise yariyor mu? Stres testi
+
+Tabanin tek isi strateji BOZULDUGUNDA hasari sinirlamak. Bunu test etmek
+icin kaybettigini kanitladigim bir ayar kullandim (15m zaman dilimi,
+-0.09R/islem, 4 yil gercek veri). 300$ bakiye, 170$ taban:
+
+| ayar | 300$ -> | islem | taban |
+|------|---------|-------|-------|
+| taban yok, risk %0.75 | **69$** | 2993 | delindi |
+| taban yok, risk %2 | **12$** | 2972 | delindi |
+| taban 170$, yastigin %6'si | **195$** | 151 | **tuttu** |
+
+Tabansiz bot olene kadar ~3000 islem yapti. Tabanli bot 151 islemden
+sonra **kendi kendine durdu** -- yastik `min_cushion_usdt` esigine
+indiginde. Sermayenin %65'i korundu, %4'u degil.
+
+### Cirpinan taban: kazanilani kilitle
+
+Sabit taban bir sorun yaratir: hesap 300$ -> 5000$ buyurse yastik
+130$ -> 4830$ olur, yani kar ettikce oransal olarak daha cok risk
+alirsin. `capital_floor_ratchet_pct` bunu duzeltir: taban zirvenin
+belirlenen yuzdesine yukselir ve **bir daha asla dusmez.**
+
+Ikinci yari (2023-26, boga piyasasi icermeyen daha temsili donem):
+
+| ayar | yillik | maks dusus |
+|------|--------|------------|
+| taban yok, risk %0.75 (varsayilan) | +9.1% | 28.9% |
+| taban 170$ sabit, yastigin %4'u | +18.3% | 61.8% |
+| taban 170$ sabit, yastigin %6'si | +15.1% | 69.3% |
+| **cirpinan %70, yastigin %6'si** | **+19.3%** | **48.4%** |
+
+Cirpinan taban ikinci yaride **her iki olcutte de** kazandi: en yuksek
+getiri ve taban secenekleri icinde en dusuk dusus.
+
+Ilk yaride sabit taban +%115 gibi parlak gorunuyordu. O sayi guvenilir
+degil -- ayni donemde risk %10 da +%181 goruyordu ve ikinci yaride
+-%0.2'ye dustu (bkz. asagisi). Ilk yariya bakip ayar secmek, bu botta
+tekrar tekrar yanlis cikti.
+
+### Risk seviyesi neden sinirli
+
+Riski artirmak bir yere kadar ise yarar, sonra tersine doner:
+
+| risk/islem | tam donem | ilk yari | ikinci yari |
+|------------|-----------|----------|-------------|
+| %0.75 | +15.4% | +19.7% | +8.4% |
+| %2 | +45.5% | +60.6% | +25.9% |
+| %5 | +87.6% | +132.9% | +34.4% |
+| %10 | +84.0% | +181.7% | **-0.2%** |
+| %20 | +14.5% | - | - |
+
+Iki sey oluyor:
+
+1. **Tepe noktasi var.** %5'ten sonra getiri duserken dusus artmaya
+   devam ediyor. Kayiplar carpimsal, kazanclar toplamsal: %50 kaybettikten
+   sonra basa donmek icin %100 kazanmak gerekir.
+2. **Tepe noktasi SABIT DEGIL.** Ilk yariya bakip "%10 en iyisi" diyen
+   biri, ikinci yaride %92 dusus yasayip sifir kazanirdi.
+
+Bu yuzden `risk_per_trade_pct` tabansiz %2 ile, tabanliyken %6 ile
+sinirli. Tabanli halde yuzde daha kucuk bir sayiya (yastiga) uygulandigi
+icin mutlak risk benzer kalir.
+
+### Ayarlar
+
+```yaml
+risk:
+  capital_floor_usdt: 170            # kesin korunacak tutar (0 = kapali)
+  capital_floor_ratchet_pct: 70      # taban zirvenin %70'ine yukselir
+  min_cushion_usdt: 25               # yastik bunun altina duserse tamamen dur
+  max_total_risk_pct_of_cushion: 30  # es zamanli tum pozisyonlarin toplam tavani
+  risk_per_trade_pct: 6              # YASTIGIN yuzdesi, bakiyenin degil
+```
+
+Son satir onemli: taban tanimliyken `risk_per_trade_pct` **yastiga**
+uygulanir. 300$ bakiye ve 170$ tabanda %6, islem basi 7.80$ risk demektir
+-- bakiyenin %2.6'si.
+
+`max_total_risk_pct_of_cushion` neden gerekli: tek islem tabani delemez
+ama es zamanli 4 islem birden delebilir. Kripto pozisyonlari yuksek
+korelasyonlu; hepsinin ayni anda ters gitmesi uzak bir ihtimal degil,
+tipik bir cokus gunu. Breakeven'a cekilmis stoplar bu toplamdan dusulur.
+
+### Neyi garanti etmez
+
+Taban **gap riskine karsi koruma degildir.** Fiyat stop seviyesini
+atlayip asagida acilirsa zarar hesaplanandan buyuk olur. Kripto 7/24
+isler ama sert haberlerde saniyeler icinde %10 atlayabilir. Taban "cok
+buyuk ihtimalle korunur" demektir, "matematiksel olarak korunur" degil.
+
+---
+
 ## Izleme paneli
 
 Bot calisirken tarayicidan:

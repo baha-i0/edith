@@ -53,6 +53,59 @@ def max_safe_leverage(stop_pct: float, max_stop_vs_liq: float,
     return max(1, int(raw))
 
 
+def effective_floor(risk_cfg: RiskConfig, state: Optional["RiskState"] = None) -> float:
+    """Su anda gecerli taban.
+
+    Iki kaynagin BUYUGU: sabit taban ve zirveden cirpinan taban.
+    Cirpinan kisim state'te saklanir cunku ASLA dusmemeli -- bakiye
+    zirveden geri gelse bile kilitlenen kar kilitli kalir.
+    """
+    floor = risk_cfg.capital_floor_usdt
+    if state is not None:
+        floor = max(floor, state.floor_usdt)
+    return floor
+
+
+def update_floor(risk_cfg: RiskConfig, state: "RiskState", equity: float) -> float:
+    """Zirveyi ve cirpinan tabani gunceller. Yeni tabani doner."""
+    if equity > state.peak_equity:
+        state.peak_equity = equity
+    if risk_cfg.capital_floor_ratchet_pct > 0:
+        hedef = state.peak_equity * risk_cfg.capital_floor_ratchet_pct / 100.0
+        if hedef > state.floor_usdt:
+            state.floor_usdt = hedef
+    return effective_floor(risk_cfg, state)
+
+
+def risk_base(equity: float, risk_cfg: RiskConfig,
+              state: Optional["RiskState"] = None) -> float:
+    """Risk hangi para uzerinden olculur: tum bakiye mi, yastik mi?
+
+    Taban tanimliysa bot sadece YASTIGI (bakiye - taban) riske atar.
+    Bakiye dustukce yastik kucululur ve pozisyonlar kendiliginden
+    kucululur -- tabana varmadan bot durur.
+    """
+    floor = effective_floor(risk_cfg, state)
+    if floor <= 0:
+        return equity
+    return max(0.0, equity - floor)
+
+
+def open_risk_total(positions) -> float:
+    """Acik pozisyonlarin toplam kalan riski (USDT).
+
+    Stop breakeven'a cekilmisse o pozisyonun riski artik sifirdir --
+    en kotu ihtimalde girisinden cikar. Bunu saymamak yeni islem
+    acilmasini gereksiz yere engellerdi.
+    """
+    total = 0.0
+    for p in positions:
+        if getattr(p, "breakeven_moved", False):
+            continue
+        total += abs(p.entry_price - p.stop) * p.qty
+    return total
+
+
 def size_position(
     equity: float,
     free_margin: float,
@@ -61,9 +114,21 @@ def size_position(
     filters: SymbolFilters,
     risk_cfg: RiskConfig,
     desired_leverage: int,
+    open_risk: float = 0.0,
+    state: Optional["RiskState"] = None,
 ) -> SizingResult:
     if equity <= 0 or entry <= 0:
         return SizingResult(False, reason="equity/fiyat gecersiz")
+
+    floor = effective_floor(risk_cfg, state)
+    base = risk_base(equity, risk_cfg, state)
+    if floor > 0 and base < risk_cfg.min_cushion_usdt:
+        return SizingResult(
+            False,
+            reason=(f"yastik tukendi: bakiye {equity:.2f}, taban {floor:.2f} "
+                    f"-> riske atilabilir {base:.2f} < "
+                    f"{risk_cfg.min_cushion_usdt:.2f}"),
+        )
 
     stop_dist = abs(entry - stop)
     if stop_dist <= 0:
@@ -73,7 +138,24 @@ def size_position(
     lev_cap = max_safe_leverage(stop_pct, risk_cfg.max_stop_vs_liquidation)
     leverage = max(1, min(desired_leverage, risk_cfg.max_leverage, lev_cap))
 
-    risk_amount = equity * risk_cfg.risk_per_trade_pct / 100.0
+    risk_amount = base * risk_cfg.risk_per_trade_pct / 100.0
+
+    # Tavan 0: ayni anda acik TUM pozisyonlarin toplam riski. Tek islem
+    # tabani delemez ama es zamanli 4 islem birden ters giderse delebilir.
+    # Kripto pozisyonlari yuksek korelasyonlu -- hepsi ayni anda ters
+    # gitmesi uzak bir ihtimal degil, tipik bir cokus gunu.
+    if floor > 0:
+        toplam_tavan = base * risk_cfg.max_total_risk_pct_of_cushion / 100.0
+        kalan = toplam_tavan - open_risk
+        if kalan <= 0:
+            return SizingResult(
+                False,
+                reason=(f"acik risk tavani dolu: {open_risk:.2f} / "
+                        f"{toplam_tavan:.2f} USDT (yastigin %"
+                        f"{risk_cfg.max_total_risk_pct_of_cushion:.0f}'i)"),
+            )
+        risk_amount = min(risk_amount, kalan)
+
     qty = risk_amount / stop_dist
 
     # Tavan 1: toplam notional (equity yuzdesi)
@@ -102,7 +184,7 @@ def size_position(
     notional = qty * entry
     margin = notional / leverage
     actual_risk = qty * stop_dist
-    if actual_risk > equity * (risk_cfg.risk_per_trade_pct * 1.05) / 100.0:
+    if actual_risk > base * (risk_cfg.risk_per_trade_pct * 1.05) / 100.0:
         return SizingResult(False, reason="hesaplanan risk butceyi asiyor")
 
     return SizingResult(
@@ -113,7 +195,8 @@ def size_position(
         leverage=leverage,
         risk_amount=actual_risk,
         stop_pct=stop_pct * 100.0,
-        reason=f"risk {actual_risk:.2f} {'USDT'} / stop %{stop_pct*100:.2f} / {leverage}x",
+        reason=(f"risk {actual_risk:.2f} USDT / stop %{stop_pct*100:.2f} / {leverage}x"
+                + (f" / yastik {base:.2f} (taban {floor:.0f})" if floor > 0 else "")),
     )
 
 
@@ -134,6 +217,11 @@ class RiskState:
     shadow_mode: bool = False
     shadow_since_ms: int = 0
     shadow_reason: str = ""
+    # Cirpinan taban icin: gorulen en yuksek bakiye ve ondan turetilen
+    # gecerli taban. Taban ASLA dusmez -- kalici olarak saklanir, cunku
+    # yeniden baslatmada sifirlanirsa "kilitlenen kar" kilidi acilirdi.
+    peak_equity: float = 0.0
+    floor_usdt: float = 0.0
     # Sahibin Telegram'dan /dur demesiyle set edilir. Gun degisiminde
     # SIFIRLANMAZ: patron durdurduysa, durur. Sadece /devam kaldirir.
     paused: bool = False

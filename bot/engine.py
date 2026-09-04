@@ -22,7 +22,8 @@ from .shadow import ShadowTracker
 from .models import LONG, Candle, Position, Trade
 from .dashboard import DashboardServer, build_state
 from .notify import CommandRouter, Notifier
-from .risk import RiskGuard, size_position, validate_signal_quality
+from .risk import (RiskGuard, effective_floor, open_risk_total,
+                   size_position, update_floor, validate_signal_quality)
 from .state import Store
 from .strategy import Features, TrendPullbackStrategy, build_strategy
 
@@ -98,6 +99,13 @@ class TradingEngine:
         self._handle_commands(now)
         equity = self.broker.equity()
         self.store.record_equity(equity, now)
+        # Cirpinan taban: zirve yukseldiyse taban da yukselir ve bir daha
+        # dusmez. Once bunu yap -- boyutlandirma gecerli tabani gormeli.
+        onceki = self.guard.state.floor_usdt
+        yeni = update_floor(self.cfg.risk, self.guard.state, equity)
+        if yeni > onceki > 0:
+            log.info("Taban yukseldi: %.2f -> %.2f USDT (zirve %.2f)",
+                     onceki, yeni, self.guard.state.peak_equity)
         self.guard.roll_day(now, equity)
         self.learner.record_equity(equity)
 
@@ -588,6 +596,8 @@ class TradingEngine:
             equity=equity, free_margin=self.broker.free_margin(),
             entry=sig.entry, stop=sig.stop, filters=filters,
             risk_cfg=risk_cfg, desired_leverage=self.cfg.account.leverage,
+            open_risk=open_risk_total(self.broker.positions().values()),
+            state=self.guard.state,
         )
         if not sizing.ok:
             log.info("%s pozisyon acilmadi: %s", symbol, sizing.reason)

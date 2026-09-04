@@ -75,6 +75,45 @@ risk:
   # de dogrulandi; 20 sembolde beklenti kusursuz monoton (+0.077 -> +0.255).
   min_breadth: 4
 
+  # --------------------------------------------------------------------
+  # SERMAYE TABANI -- "paramin su kadarini kesin korusun"
+  # --------------------------------------------------------------------
+  # Fikir: bakiyenin tamamini degil, sadece kaybetmeyi goze aldigin
+  # kismini riske at. Yastik = bakiye - taban. Bakiye dustukce yastik
+  # kucululur, pozisyonlar da kendiliginden kucululur; taban yaklastikca
+  # bot yavaslar ve tabana varmadan durur. (Yontemin adi CPPI.)
+  #
+  # STRES TESTI -- 300$ bakiye, 170$ taban, KAYBEDEN bir strateji ile
+  # (15m, kanitlanmis negatif edge, 4 yil gercek veri):
+  #   taban yok, risk %0.75  ->  300$ -> 69$   (2993 islem, olene kadar)
+  #   taban yok, risk %2     ->  300$ -> 12$   (hesap fiilen bitti)
+  #   taban 170$, yastigin %6 ->  300$ -> 195$ (151 islemde durdu)
+  # Tabanli bot yastik bitince KENDI KENDINE durdu. Isi bu.
+  #
+  # KAZANDIRDIGI (ikinci yari, 2023-26, daha temsili donem):
+  #   taban yok %0.75   -> +%9.1/yil,  dusus %28.9
+  #   taban 170$ %6     -> +%15.1/yil, dusus %69.3
+  #   cirpinan %70, %6  -> +%19.3/yil, dusus %48.4   <- hem daha cok
+  #                                                     hem daha az dusus
+  # Cirpinan taban ikinci yaride her iki olcutte de kazandi. Sabit taban
+  # ilk yaride +%115 gibi parlak gorunuyordu; o sayi guvenilir degil
+  # (Kelly tepesinin otesinde -- README "risk seviyesi" bolumu).
+  #
+  # DURUSTCE: taban GARANTI DEGIL. Fiyat stopu atlayip asagida acilirsa
+  # (gap) zarar hesaplanandan buyuk olur. "Cok buyuk ihtimalle korunur".
+  #
+  # capital_floor_usdt: kendi yatirdigin paraya gore ayarla (0 = kapali)
+  capital_floor_usdt: 0
+  # Taban zirvenin bu yuzdesine ciplak yukselir ve BIR DAHA DUSMEZ.
+  # Boylece kazanilan para kilitlenir. 0 = kapali.
+  # 300$ -> taban 210$ | 1000$ -> 700$ | 5000$ -> 3500$
+  capital_floor_ratchet_pct: 0
+  # Yastik bunun altina duserse bot tamamen durur ve haber verir.
+  min_cushion_usdt: 25
+  # Ayni anda acik TUM pozisyonlarin toplam riski, yastigin en fazla %'si.
+  # Tek islem tabani delemez; es zamanli 4 islem birden delebilir.
+  max_total_risk_pct_of_cushion: 30
+
   # Ayni yonde pozisyon tavani. 0 = sinirsiz (ONERILEN).
   # Hipotez "korelasyonu sinirla" idi; VERI REDDETTI. Ayni yonde 3-4 pozisyon
   # acikken girilen islemler +0.234R, yalniz girilenler -0.024R. Sinirlamak
