@@ -98,6 +98,22 @@ class ExecutionConfig:
     recv_window: int = 5000
     request_timeout: float = 10.0
     max_retries: int = 4
+    # Giris emri tipi: "market" (taker) veya "post_only" (maker limit).
+    # post_only komisyonu %0.05 -> %0.02 dusurur AMA emir dolmayabilir:
+    # fiyat geri gelmezse islem kacar ve kacan islemler rastgele degildir --
+    # hizla kaciplar genelde en iyi islemlerdir (ters secilim).
+    # Hangisinin kazandigi OLCULUR, varsayilmaz. Bkz. README "postOnly".
+    entry_order_type: str = "market"
+    # post_only limitin kac bar bekleyecegi. Dolmazsa iptal, islem yok.
+    post_only_wait_bars: int = 1
+    # Backtest'te "emir doldu" saymak icin fiyatin limiti kac bps ASMASI
+    # gerektigi. 0 = fiyatin degmesi yeter (iyimser: gercekte kuyrukta
+    # arkada kalip dolmayabilirsin). Varsayilan 1 bps kotumser taraf.
+    post_only_fill_margin_bps: float = 1.0
+    # Limit dolmazsa ne yapilsin? True = market ile gir (islem kacmaz ama
+    # taker komisyonu odenir), False = vazgec. Kacan islemler rastgele
+    # degildir; hangisinin iyi oldugu OLCULUR. Bkz. README "postOnly".
+    post_only_fallback_market: bool = True
 
 
 @dataclass
@@ -262,6 +278,12 @@ class Config:
 
         if e.taker_fee < 0 or e.maker_fee < 0:
             errs.append("komisyonlar negatif olamaz")
+        if e.entry_order_type not in ("market", "post_only"):
+            errs.append("execution.entry_order_type 'market' ya da 'post_only' olmali")
+        if e.post_only_wait_bars < 1:
+            errs.append("execution.post_only_wait_bars >= 1 olmali")
+        if e.post_only_fill_margin_bps < 0:
+            errs.append("execution.post_only_fill_margin_bps >= 0 olmali")
         if e.max_spread_bps <= 0:
             errs.append("max_spread_bps > 0 olmali")
 

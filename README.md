@@ -167,6 +167,101 @@ mu -- ayirt edecek veri yok. Duz gecen bir yil normaldir.
 
 ---
 
+## Giris emri: postOnly (maker) vs market (taker)
+
+Komisyon stratejinin degil, **aritmetigin** parcasidir: kesin bilinir ve
+her islemde odenir. Binance vadeli islemlerde taker %0.05, maker %0.02.
+Girisi tahtaya limit emir olarak yazip beklemek bu farki cebe koyar.
+
+Bedeli var: **emir dolmayabilir.** Ve kacan islemler rastgele degildir --
+hizla kacan fiyat, cogu zaman en iyi islemdir. O yuzden olculdu.
+
+Portfoy backtesti (15 sembol, 5 yil, risk %0.75, kotumser dolum varsayimi):
+
+| giris tipi                    | islem | isabet | beklenti | yillik | dusus | komisyon |
+|-------------------------------|-------|--------|----------|--------|-------|----------|
+| market (taker)                | 358   | 54.5%  | +0.277R  | +14.8% | 14.2% | 27.0$    |
+| post_only, dolmazsa **market**| 358   | 54.7%  | +0.285R  | +15.4% | 14.1% | 19.4$    |
+| post_only, dolmazsa vazgec    | 350   | 55.7%  | +0.305R  | +16.3% | 13.4% | 19.2$    |
+
+Ilk bakista "vazgec" varyanti kazaniyor. **Zaman bolmesini gecemedi:**
+
+| donem       | market  | vazgec  | market'e dusus |
+|-------------|---------|---------|----------------|
+| ilk yari    | +19.3%  | +22.4%  | +19.7%         |
+| ikinci yari | +7.6%   | +7.6%   | +8.4%          |
+
+"Vazgec" varyantinin avantaji ikinci yaride **tamamen kayboldu** (dusus de
+14.2%'den 15.1%'e kotulesti). Sebep acik: kazanci komisyondan degil, hangi
+islemlerin kacirildigindan geliyordu -- yani sanstan. Ilk yaride kacanlar
+zararliydi, ikinci yaride karliydi.
+
+"Market'e dusus" varyantinin avantaji ise **ikisinde de pozitif**, cunku
+kaynagi aritmetik: islem sayisi ayni (358), sadece komisyon %28 daha az.
+Sanssiz bir donem bunu yok edemez.
+
+Dolum varsayimina duyarlilik (limitin dolmasi icin fiyatin onu kac bps
+gecmesi gerektigi):
+
+| marj   | 0 bps  | 1 bps  | 3 bps  | 5 bps  | 10 bps |
+|--------|--------|--------|--------|--------|--------|
+| yillik | +15.9% | +16.3% | +16.3% | +15.9% | +15.8% |
+
+Hepsinde market'in ustunde. Sonuc, en emin olmadigim parametreye duyarli
+degil -- bu, kabul icin aradigim sarttir.
+
+**Varsayilan:** `entry_order_type: post_only`, `post_only_fallback_market: true`.
+Beklenen katki ~+0.6 puan/yil. Kucuk ama bedava ve garantili.
+
+Uygulama notu: canlida emir `timeInForce=GTX` ile gonderilir. GTX, emir
+maker olarak tahtaya yazilamayacaksa borsa tarafindan **reddedilir** --
+yani kazara taker'a dusmek imkansizdir. Reddedilme normal bir sonuctur,
+hata degil: bot market'e duser.
+
+---
+
+## Telegram: bot ile konusma
+
+Bot otonomdur; bu komutlar onu **yonetmek** icin degil, acil durumda
+**mudahale** edebilmen icindir.
+
+| komut      | ne yapar |
+|------------|----------|
+| `/durum`   | acik pozisyonlar, anlik PnL (R cinsinden), gunun ozeti |
+| `/bakiye`  | bakiye, serbest marj, gunun kar/zarari |
+| `/rapor`   | gunluk tam ozet |
+| `/ogrenme` | bot neyi ogrendi, hangi kovalari kapatti |
+| `/dur`     | yeni islem acmayi durdurur (acik pozisyonlara dokunmaz) |
+| `/devam`   | tekrar acar |
+| `/kapat`   | TUM pozisyonlari hemen kapatir ve botu durdurur |
+
+Uc tasarim karari:
+
+1. **`/kapat` tek mesajla calismaz.** Once `/onayla` istenir (2 dakika
+   pencere). Cebindeki telefonda yanlisliga basmak, gercek parayi kotu bir
+   anda piyasadan cikarmak demektir.
+2. **`/dur` borsadaki koruma emirlerini KALDIRMAZ.** Stop ve hedefler
+   yerinde kalir. "Durdurmak" sadece yeni islem acmayi kapatir.
+3. **`/dur` gun donunce kendiliginden acilmaz.** Gunluk limitler sabah
+   sifirlanir; patron durdurduysa `/devam` diyene kadar durur.
+
+Guvenlik: komutlar **sadece** `TELEGRAM_CHAT_ID` ile eslesen sohbetten
+kabul edilir. Bot token'i sizarsa bunu bilen biri hesabi bosaltabilirdi;
+chat_id kontrolu tek savunmadir ve testle korunuyor
+(`test_yabanci_sohbetten_gelen_komut_YOK_SAYILIR`).
+
+Kurulum: [@BotFather](https://t.me/BotFather) ile bot ac, token'i al,
+[@userinfobot](https://t.me/userinfobot) ile chat id'ni ogren, `.env`'e yaz:
+
+```bash
+TELEGRAM_BOT_TOKEN=123456:AAA...
+TELEGRAM_CHAT_ID=987654321
+```
+
+Ikisi de bos birakilirsa bot sessizce bildirimsiz calisir.
+
+---
+
 ## Bu sonuclara ne kadar guvenmeli (durust degerlendirme)
 
 **Guclu yanlar**

@@ -51,6 +51,44 @@ Bundan sonra:
 Acik pozisyonlarin koruma emirleri **borsada durur** -- bilgisayar tamamen
 kapansa bile stop'un aktiftir.
 
+## 2.5. Telefonundan bota bakmak (istege bagli, 3 dakika)
+
+Bot sana kendisi rapor gonderir. Ama merak edip bakmak istersen Telegram
+kur -- ayrica **acil durumda mudahale** edebilmen icin tek yol budur.
+
+1. Telegram'da [@BotFather](https://t.me/BotFather) ac, `/newbot` yaz,
+   verdigi token'i kopyala.
+2. [@userinfobot](https://t.me/userinfobot) ac, sana yazdigi `Id` sayisini kopyala.
+3. `.env` dosyana ekle:
+
+```bash
+TELEGRAM_BOT_TOKEN=buraya_token
+TELEGRAM_CHAT_ID=buraya_id
+```
+
+Sonra kendi botuna yazabilecegin komutlar:
+
+| yaz        | ne olur |
+|------------|---------|
+| `/durum`   | acik pozisyonlar, ne kadar kar/zarardasin |
+| `/bakiye`  | hesapta ne var |
+| `/rapor`   | gunun tam ozeti |
+| `/ogrenme` | bot neyi ogrendi |
+| `/dur`     | yeni islem acmayi durdur |
+| `/devam`   | tekrar ac |
+| `/kapat`   | HER SEYI simdi kapat (once `/onayla` ister) |
+
+Bilmen gereken uc sey:
+
+- **`/dur` acik pozisyonlari kapatmaz.** Onlarin stop emirleri borsada
+  durmaya devam eder. Sadece yeni islem acilmaz.
+- **`/kapat` geri alinamaz.** Bu yuzden iki adim: once `/kapat`, sonra
+  `/onayla`. Yanlislikla basmani engellemek icin.
+- **Bunlari kullanman gerekmiyor.** Bot zaten kendi karar veriyor. Bu
+  komutlar "bir seyler ters gidiyor gibi" hissettigin an icin var.
+
+---
+
 ## 3. Patron rolu: pasif
 
 Bot gunde **bir kez** telefonuna ozet gonderir. Sen bota gitmezsin, o sana gelir.

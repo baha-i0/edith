@@ -34,6 +34,9 @@ class LiveBroker(Broker):
         self.store = store
         self._positions: Dict[str, Position] = store.load_positions()
         self._prepared: set[str] = set()
+        # Tahtada bekleyen post_only giris emirleri. Yeniden baslatmada
+        # kaybolmamali: aksi halde borsada sahipsiz bir limit emir kalir.
+        self._pending: Dict[str, dict] = (store.get_kv("pending_entries") or {})
         self.client.sync_time()
 
     # --------------------------------------------------------------- hesap
@@ -45,6 +48,9 @@ class LiveBroker(Broker):
 
     def positions(self) -> Dict[str, Position]:
         return dict(self._positions)
+
+    def pending_entries(self) -> Dict[str, str]:
+        return {sym: rec["side"] for sym, rec in self._pending.items()}
 
     def prepare_symbol(self, symbol: str, leverage: int) -> None:
         key = f"{symbol}:{leverage}"
@@ -64,10 +70,17 @@ class LiveBroker(Broker):
         self.prepare_symbol(symbol, leverage)
 
         side = "BUY" if signal.side == LONG else "SELL"
-        exit_side = "SELL" if signal.side == LONG else "BUY"
         now = int(time.time() * 1000)
         cid = f"edith{now}"
 
+        if self.cfg.execution.entry_order_type == "post_only" and symbol not in self._pending:
+            return self._place_post_only(signal, qty, leverage, f, side, cid, now)
+        return self._market_entry(signal, qty, leverage, f, side, cid, now)
+
+    def _market_entry(self, signal, qty: float, leverage: int, f: SymbolFilters,
+                      side: str, cid: str, now: int) -> Optional[Position]:
+        symbol = signal.symbol
+        exit_side = "SELL" if side == "BUY" else "BUY"
         order = self.client.market_order(symbol, side, qty, client_id=cid)
         avg = float(order.get("avgPrice") or 0) or signal.entry
         filled = float(order.get("executedQty") or qty)
@@ -84,6 +97,7 @@ class LiveBroker(Broker):
             stop=stop, tp1=tp1, tp2=tp2,
             initial_risk_per_unit=abs(avg - stop), opened_at=now, leverage=leverage,
             initial_qty=filled, entry_reason=signal.reason, client_id=cid,
+            context=dict(getattr(signal, "meta", {}) or {}),
         )
         try:
             self._place_protection(pos, exit_side, f)
@@ -98,6 +112,151 @@ class LiveBroker(Broker):
         log.info("[LIVE] GIRIS %s %s qty=%s @ %.4f stop=%.4f tp1=%.4f tp2=%.4f",
                  pos.side, symbol, filled, avg, stop, tp1, tp2)
         return pos
+
+    # ------------------------------------------------- post_only giris akisi
+    def _save_pending(self) -> None:
+        self.store.set_kv("pending_entries", self._pending)
+
+    def _place_post_only(self, signal, qty: float, leverage: int, f: SymbolFilters,
+                         side: str, cid: str, now: int) -> None:
+        """Maker limit emri tahtaya yazar. Pozisyon HENUZ acilmadi.
+
+        Emir fiyatin gerisine konur: long icin altina, short icin ustune.
+        Market emirde slipaji odersin; burada ayni kadar iyilesme istersin.
+        Dolup dolmadigi her dongude poll_pending() ile kontrol edilir.
+        """
+        e = self.cfg.execution
+        off = e.slippage_bps / 10_000.0
+        limit = f.round_price(signal.entry * (1 - off) if signal.side == LONG
+                              else signal.entry * (1 + off))
+        try:
+            self.client.post_only_order(signal.symbol, side, qty, limit, client_id=cid)
+        except BinanceError as exc:
+            # GTX reddi = emir aninda dolacakti (taker olurdu). Hata degil.
+            log.info("%s post_only reddedildi (%s) - market'e dusuluyor",
+                     signal.symbol, exc)
+            return self._market_entry(signal, qty, leverage, f, side, cid, now)
+        # Bekleme suresi bar cinsinden verilir; saniyeye cevir.
+        bar_ms = _timeframe_ms(self.cfg.timeframe)
+        self._pending[signal.symbol] = {
+            "cid": cid, "side": signal.side, "qty": qty, "leverage": leverage,
+            "limit": limit, "stop": signal.stop, "tp1": signal.tp1, "tp2": signal.tp2,
+            "entry": signal.entry, "reason": signal.reason,
+            "meta": dict(getattr(signal, "meta", {}) or {}),
+            "placed_ms": now, "deadline_ms": now + bar_ms * e.post_only_wait_bars,
+        }
+        self._save_pending()
+        log.info("[LIVE] POST_ONLY %s %s qty=%s @ %.4f (limit tahtada)",
+                 signal.side, signal.symbol, qty, limit)
+        return None
+
+    def poll_pending(self) -> list:
+        """Bekleyen limit emirlerini kontrol eder. Dolanlari pozisyona cevirir.
+
+        Her dongude cagrilir. Uc sonuc mumkun:
+          FILLED               -> pozisyon ac, korumayi hemen kur
+          suresi doldu, bos    -> iptal; ayara gore market ile gir ya da vazgec
+          kismi dolum          -> iptal; dolan miktar yeterliyse onunla devam
+        """
+        opened: list = []
+        for symbol in list(self._pending):
+            rec = self._pending[symbol]
+            try:
+                o = self.client.query_order(symbol, rec["cid"])
+            except BinanceError:
+                log.exception("%s bekleyen emir sorgulanamadi", symbol)
+                continue
+            status = str(o.get("status", ""))
+            done = float(o.get("executedQty") or 0)
+            now = int(time.time() * 1000)
+
+            if status == "FILLED":
+                self._pending.pop(symbol); self._save_pending()
+                pos = self._adopt_fill(rec, symbol, done or rec["qty"],
+                                       float(o.get("avgPrice") or rec["limit"]), now)
+                if pos:
+                    opened.append(pos)
+                continue
+
+            if status in ("CANCELED", "EXPIRED", "REJECTED"):
+                self._pending.pop(symbol); self._save_pending()
+                if done > 0:
+                    pos = self._adopt_fill(rec, symbol, done,
+                                           float(o.get("avgPrice") or rec["limit"]), now)
+                    if pos:
+                        opened.append(pos)
+                elif self.cfg.execution.post_only_fallback_market:
+                    pos = self._fallback(rec, symbol, now)
+                    if pos:
+                        opened.append(pos)
+                continue
+
+            if now < rec["deadline_ms"]:
+                continue
+
+            # Sure doldu: iptal et, sonra karar ver.
+            try:
+                self.client.cancel_order(symbol, rec["cid"])
+            except BinanceError:
+                log.warning("%s bekleyen emir iptal edilemedi", symbol, exc_info=True)
+                continue
+            self._pending.pop(symbol); self._save_pending()
+            if done > 0:
+                pos = self._adopt_fill(rec, symbol, done,
+                                       float(o.get("avgPrice") or rec["limit"]), now)
+                if pos:
+                    opened.append(pos)
+            elif self.cfg.execution.post_only_fallback_market:
+                log.info("%s limit dolmadi - market ile giriliyor", symbol)
+                pos = self._fallback(rec, symbol, now)
+                if pos:
+                    opened.append(pos)
+            else:
+                log.info("%s limit dolmadi - islem iptal", symbol)
+        return opened
+
+    def _adopt_fill(self, rec: dict, symbol: str, filled: float, avg: float,
+                    now: int) -> Optional[Position]:
+        """Dolan limit emrini pozisyona cevirir ve korumayi kurar."""
+        f = self.client.filters(symbol)
+        filled = f.round_qty(filled)
+        if filled <= 0 or not f.qty_ok(filled, avg):
+            log.warning("%s dolan miktar cok kucuk (%s) - kapatiliyor", symbol, filled)
+            if filled > 0:
+                self.client.market_order(
+                    symbol, "SELL" if rec["side"] == LONG else "BUY",
+                    filled, reduce_only=True)
+            return None
+        drift = avg - rec["entry"]
+        pos = Position(
+            symbol=symbol, side=rec["side"], qty=filled, entry_price=avg,
+            stop=f.round_price(rec["stop"] + drift),
+            tp1=f.round_price(rec["tp1"] + drift),
+            tp2=f.round_price(rec["tp2"] + drift),
+            initial_risk_per_unit=abs(avg - (rec["stop"] + drift)), opened_at=now,
+            leverage=rec["leverage"], initial_qty=filled,
+            entry_reason=rec["reason"], client_id=rec["cid"],
+            context=dict(rec.get("meta") or {}),
+        )
+        exit_side = "SELL" if pos.side == LONG else "BUY"
+        try:
+            self._place_protection(pos, exit_side, f)
+        except Exception:
+            log.exception("Koruma emri basarisiz - pozisyon aninda kapatiliyor")
+            self.client.market_order(symbol, exit_side, filled, reduce_only=True)
+            return None
+        self._positions[symbol] = pos
+        self.store.save_position(pos)
+        log.info("[LIVE] GIRIS(maker) %s %s qty=%s @ %.4f stop=%.4f",
+                 pos.side, symbol, filled, avg, pos.stop)
+        return pos
+
+    def _fallback(self, rec: dict, symbol: str, now: int) -> Optional[Position]:
+        sig = _SigView(rec, symbol)
+        f = self.client.filters(symbol)
+        side = "BUY" if rec["side"] == LONG else "SELL"
+        return self._market_entry(sig, rec["qty"], rec["leverage"], f, side,
+                                  f"{rec['cid']}m", now)
 
     def _place_protection(self, pos: Position, exit_side: str, f: SymbolFilters) -> None:
         self.client.stop_market(pos.symbol, exit_side, pos.stop, client_id=f"{pos.client_id}sl")
@@ -216,3 +375,28 @@ class LiveBroker(Broker):
             pass
         log.info("[LIVE] KAPANDI %s %s pnl=%.2f (%s)", pos.side, pos.symbol, net, reason)
         return trade
+
+
+class _SigView:
+    """Bekleyen kayittan sinyal benzeri hafif nesne (market'e dusus icin)."""
+
+    def __init__(self, rec: dict, symbol: str):
+        self.symbol = symbol
+        self.side = rec["side"]
+        self.entry = rec["entry"]
+        self.stop = rec["stop"]
+        self.tp1 = rec["tp1"]
+        self.tp2 = rec["tp2"]
+        self.reason = rec["reason"]
+        self.meta = dict(rec.get("meta") or {})
+
+
+_TF_MS = {
+    "1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000,
+    "1h": 3_600_000, "2h": 7_200_000, "4h": 14_400_000, "6h": 21_600_000,
+    "8h": 28_800_000, "12h": 43_200_000, "1d": 86_400_000,
+}
+
+
+def _timeframe_ms(tf: str) -> int:
+    return _TF_MS.get(tf, 14_400_000)

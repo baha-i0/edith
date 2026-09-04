@@ -121,6 +121,25 @@ execution:
   request_timeout: 10
   max_retries: 4
 
+  # GIRIS EMRI TIPI -- olculdu, secilmedi.
+  # market    : aninda dolar, taker komisyonu %0.05
+  # post_only : tahtada bekler, maker komisyonu %0.02 (GTX emri)
+  #
+  # Portfoy backtesti (15 sembol, 5 yil, risk %0.75):
+  #   market                       -> yillik +14.8%, komisyon 27.0$, bekl +0.277R
+  #   post_only + market'e dusus   -> yillik +15.4%, komisyon 19.4$, bekl +0.285R
+  #   post_only + dolmazsa vazgec  -> yillik +16.3% AMA ikinci yarida kayboldu
+  #
+  # "Vazgec" varyanti daha parlak gorunuyor; ZAMAN BOLMESINI GECEMEDI:
+  # kazanci komisyondan degil, hangi islemlerin kacirildiginden geliyordu --
+  # yani sanstan. "Market'e dusus" varyantinin kazanci ARITMETIK: islem sayisi
+  # ayni (358), sadece komisyon %28 daha az. Bu yuzden varsayilan odur.
+  entry_order_type: post_only
+  post_only_wait_bars: 1          # kac bar beklesin, dolmazsa karar ver
+  post_only_fallback_market: true # dolmazsa market ile gir (islem kacmasin)
+  post_only_fill_margin_bps: 1.0  # backtest'te "doldu" saymak icin gereken pay
+                                  # (0 = fiyatin degmesi yeter; iyimser)
+
 # ============================================================================
 # OGRENME KATMANI
 # ============================================================================

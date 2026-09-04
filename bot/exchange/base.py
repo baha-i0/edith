@@ -52,6 +52,22 @@ class Broker(ABC):
     def close_position(self, symbol: str, portion: float, price_hint: float, reason: str):
         ...
 
+    def poll_pending(self) -> list:
+        """Tahtada bekleyen giris emirlerini kontrol eder; dolanlari doner.
+
+        Market emirli modda hep bostur. Motor her turda cagirir.
+        """
+        return []
+
+    def pending_entries(self) -> Dict[str, str]:
+        """Tahtada bekleyen giris emirleri: sembol -> yon.
+
+        Sadece post_only modunda dolu olur. Slot ve genislik sayimlari bunu
+        hesaba katmak zorunda: emir tahtada beklerken slot MESGULDUR, yoksa
+        ayni sembole ikinci emir gider ya da limit asilir.
+        """
+        return {}
+
     @abstractmethod
     def update_stop(self, symbol: str, new_stop: float) -> None:
         ...

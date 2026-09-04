@@ -29,6 +29,10 @@ class PaperBroker(Broker):
         saved = store.get_kv("paper_balance")
         self.balance = float(saved["balance"]) if saved else cfg.account.paper_start_balance
         self._positions: Dict[str, Position] = store.load_positions()
+        # Kagit modda da maker girisi taklit edilir. Aksi halde prova canliyla
+        # ayni olmaz: kagitta market, canlida limit -> farkli fiyat, farkli
+        # komisyon, farkli sonuc. Parite sart.
+        self._pending: Dict[str, dict] = store.get_kv("paper_pending") or {}
 
     # ------------------------------------------------------------- durum
     def _persist_balance(self) -> None:
@@ -50,6 +54,9 @@ class PaperBroker(Broker):
     def positions(self) -> Dict[str, Position]:
         return dict(self._positions)
 
+    def pending_entries(self) -> Dict[str, str]:
+        return {sym: rec["side"] for sym, rec in self._pending.items()}
+
     # ------------------------------------------------------------- islemler
     def _fill_price(self, symbol: str, side: str, is_entry: bool) -> float:
         book = self.market.book_ticker(symbol)
@@ -63,25 +70,96 @@ class PaperBroker(Broker):
     def open_position(self, signal, qty: float, leverage: int) -> Optional[Position]:
         if signal.symbol in self._positions:
             return None
-        price = self._fill_price(signal.symbol, signal.side, is_entry=True)
-        fee = price * qty * self.cfg.execution.taker_fee
+        e = self.cfg.execution
+        if e.entry_order_type == "post_only" and signal.symbol not in self._pending:
+            off = e.slippage_bps / 10_000.0
+            limit = (signal.entry * (1 - off) if signal.side == LONG
+                     else signal.entry * (1 + off))
+            now = int(time.time() * 1000)
+            self._pending[signal.symbol] = {
+                "side": signal.side, "qty": qty, "leverage": leverage, "limit": limit,
+                "entry": signal.entry, "stop": signal.stop, "tp1": signal.tp1,
+                "tp2": signal.tp2, "reason": signal.reason,
+                "meta": dict(getattr(signal, "meta", {}) or {}), "placed_ms": now,
+                "deadline_ms": now + _timeframe_ms(self.cfg.timeframe) * e.post_only_wait_bars,
+            }
+            self.store.set_kv("paper_pending", self._pending)
+            log.info("[PAPER] POST_ONLY %s %s qty=%s @ %.4f (limit bekliyor)",
+                     signal.side, signal.symbol, qty, limit)
+            return None
+        return self._fill_entry(signal.symbol, signal.side, qty, leverage,
+                                signal.entry, signal.stop, signal.tp1, signal.tp2,
+                                signal.reason, dict(getattr(signal, "meta", {}) or {}),
+                                maker=False)
+
+    def poll_pending(self) -> list:
+        """Bekleyen kagit limit emirlerini kontrol eder.
+
+        Canlidaki mantigin aynisi: fiyat limite geldiyse maker olarak dolar,
+        sure dolduysa ayara gore market'e dusulur ya da vazgecilir.
+        """
+        e = self.cfg.execution
+        now = int(time.time() * 1000)
+        opened: list = []
+        for symbol in list(self._pending):
+            rec = self._pending[symbol]
+            try:
+                book = self.market.book_ticker(symbol)
+            except Exception:
+                continue
+            px = book["ask"] if rec["side"] == LONG else book["bid"]
+            px = px or book["mid"]
+            hit = px <= rec["limit"] if rec["side"] == LONG else px >= rec["limit"]
+            if hit:
+                self._pending.pop(symbol)
+                self.store.set_kv("paper_pending", self._pending)
+                pos = self._fill_entry(symbol, rec["side"], rec["qty"], rec["leverage"],
+                                       rec["entry"], rec["stop"], rec["tp1"], rec["tp2"],
+                                       rec["reason"], rec.get("meta") or {}, maker=True,
+                                       price=rec["limit"])
+                if pos:
+                    opened.append(pos)
+                continue
+            if now < rec["deadline_ms"]:
+                continue
+            self._pending.pop(symbol)
+            self.store.set_kv("paper_pending", self._pending)
+            if e.post_only_fallback_market:
+                pos = self._fill_entry(symbol, rec["side"], rec["qty"], rec["leverage"],
+                                       rec["entry"], rec["stop"], rec["tp1"], rec["tp2"],
+                                       rec["reason"], rec.get("meta") or {}, maker=False)
+                if pos:
+                    opened.append(pos)
+            else:
+                log.info("[PAPER] %s limit dolmadi - islem iptal", symbol)
+        return opened
+
+    def _fill_entry(self, symbol: str, side: str, qty: float, leverage: int,
+                    sig_entry: float, sig_stop: float, sig_tp1: float, sig_tp2: float,
+                    reason: str, meta: dict, *, maker: bool,
+                    price: Optional[float] = None) -> Optional[Position]:
+        if price is None:
+            price = self._fill_price(symbol, side, is_entry=True)
+        fee = price * qty * (self.cfg.execution.maker_fee if maker
+                             else self.cfg.execution.taker_fee)
         self.balance -= fee
         now = int(time.time() * 1000)
 
         # Giris fiyati kaydigi icin stop/hedefler ayni R mesafesiyle kaydirilir
-        drift = price - signal.entry
+        drift = price - sig_entry
         pos = Position(
-            symbol=signal.symbol, side=signal.side, qty=qty, entry_price=price,
-            stop=signal.stop + drift, tp1=signal.tp1 + drift, tp2=signal.tp2 + drift,
-            initial_risk_per_unit=abs(price - (signal.stop + drift)),
+            symbol=symbol, side=side, qty=qty, entry_price=price,
+            stop=sig_stop + drift, tp1=sig_tp1 + drift, tp2=sig_tp2 + drift,
+            initial_risk_per_unit=abs(price - (sig_stop + drift)),
             opened_at=now, leverage=leverage, initial_qty=qty, fees_paid=fee,
-            entry_reason=signal.reason, client_id=f"paper-{now}",
+            entry_reason=reason, client_id=f"paper-{now}", context=dict(meta),
         )
         self._positions[pos.symbol] = pos
         self.store.save_position(pos)
         self._persist_balance()
-        log.info("[PAPER] GIRIS %s %s qty=%s @ %.4f stop=%.4f tp2=%.4f",
-                 pos.side, pos.symbol, qty, price, pos.stop, pos.tp2)
+        log.info("[PAPER] GIRIS%s %s %s qty=%s @ %.4f stop=%.4f tp2=%.4f",
+                 "(maker)" if maker else "", pos.side, pos.symbol, qty, price,
+                 pos.stop, pos.tp2)
         return pos
 
     def close_position(self, symbol: str, portion: float, price_hint: float,
@@ -150,3 +228,14 @@ class PaperBroker(Broker):
         self.balance -= cost
         pos.fees_paid += cost
         self._persist_balance()
+
+
+_TF_MS = {
+    "1m": 60_000, "3m": 180_000, "5m": 300_000, "15m": 900_000,
+    "30m": 1_800_000, "1h": 3_600_000, "2h": 7_200_000, "4h": 14_400_000,
+    "6h": 21_600_000, "8h": 28_800_000, "12h": 43_200_000, "1d": 86_400_000,
+}
+
+
+def _timeframe_ms(tf: str) -> int:
+    return _TF_MS.get(tf, 14_400_000)

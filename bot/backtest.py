@@ -285,6 +285,8 @@ class PortfolioResult:
     days: float = 0.0
     blocked_by_slots: int = 0
     blocked_by_guard: int = 0
+    unfilled_entries: int = 0
+    fallback_entries: int = 0
 
     @property
     def return_pct(self) -> float:
@@ -354,6 +356,8 @@ class PortfolioResult:
             f"({'zayif kanit' if self.t_stat() < 2 else 'anlamli ama korelasyon icin duzeltilmemis'})",
             f"Slot doluydu     : {self.blocked_by_slots} sinyal kacti",
             f"Risk kapisi      : {self.blocked_by_guard} sinyal engellendi",
+            f"Dolmayan emir    : {self.unfilled_entries} post_only girisi kacti",
+            f"Market'e dusen   : {self.fallback_entries} giris taker olarak yapildi",
         ])
 
 
@@ -388,7 +392,10 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
     if learner is None and cfg.learning.enabled:
         learner = Learner(cfg, store=None)
     positions: Dict[str, Position] = {}
-    pending: Dict[str, object] = {}
+    # sym -> [sinyal, kalan_bekleme_bari]. Market emirde 1 bar, post_only'de
+    # emrin tahtada bekleyecegi bar sayisi.
+    pending: Dict[str, list] = {}
+    post_only = e.entry_order_type == "post_only"
 
     for ts in timeline:
         # ---- 1) Bekleyen girisleri bu barin acilisinda doldur
@@ -396,11 +403,44 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
             i = idx[sym].get(ts)
             if i is None:
                 continue
-            sig = pending.pop(sym)
+            sig, waited = pending[sym]
+            bar = data[sym][i]
+
+            if post_only:
+                # Maker limit emri fiyatin GERISINE konur (long icin altina).
+                # Taker'da slipaji ODERIZ; maker'da ayni kadar iyilesme ISTERIZ.
+                # Emir ancak fiyat gelip degerse dolar; degmezse islem kacar.
+                limit = sig.entry * (1 - slip) if sig.side == LONG else sig.entry * (1 + slip)
+                # Limite DEGMEK dolmak degildir: tahtada onunde emirler var.
+                # Doldu saymak icin fiyatin limiti bir miktar ASMASINI sart kos.
+                need = limit * (1 - e.post_only_fill_margin_bps / 10_000.0) \
+                    if sig.side == LONG else limit * (1 + e.post_only_fill_margin_bps / 10_000.0)
+                touched = bar.low <= need if sig.side == LONG else bar.high >= need
+                if not touched:
+                    waited += 1
+                    if waited < e.post_only_wait_bars:
+                        pending[sym] = [sig, waited]
+                        continue
+                    if not e.post_only_fallback_market:
+                        pending.pop(sym)
+                        res.unfilled_entries += 1
+                        continue
+                    # Vazgecmek yerine market ile gir: komisyon tasarrufu
+                    # kacar ama islem kacmaz.
+                    res.fallback_entries += 1
+                    entry = (bar.close * (1 + slip) if sig.side == LONG
+                             else bar.close * (1 - slip))
+                    entry_fee_rate = e.taker_fee
+                else:
+                    entry = limit
+                    entry_fee_rate = e.maker_fee
+            else:
+                entry = bar.open * (1 + slip) if sig.side == LONG else bar.open * (1 - slip)
+                entry_fee_rate = e.taker_fee
+
+            pending.pop(sym)
             if sym in positions or len(positions) >= cfg.risk.max_concurrent_positions:
                 continue
-            bar = data[sym][i]
-            entry = bar.open * (1 + slip) if sig.side == LONG else bar.open * (1 - slip)
             drift = entry - sig.entry
             f = filters.get(sym) or SymbolFilters(sym, 0.0001, 0.001, 0.001, 5.0)
             risk_cfg = cfg.risk
@@ -413,7 +453,7 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
                                    risk_cfg, cfg.account.leverage)
             if not sizing.ok:
                 continue
-            fee = entry * sizing.qty * e.taker_fee
+            fee = entry * sizing.qty * entry_fee_rate
             equity -= fee
             res.fees += fee
             positions[sym] = Position(
@@ -520,10 +560,10 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
                         break
                     if cap > 0:
                         same = sum(1 for p in positions.values() if p.side == sig.side)
-                        same += sum(1 for g in pending.values() if g.side == sig.side)
+                        same += sum(1 for g, _w in pending.values() if g.side == sig.side)
                         if same >= cap:
                             continue
-                    pending[sym] = sig
+                    pending[sym] = [sig, 0]
                     taken += 1
                 res.blocked_by_slots += max(0, len(candidates) - taken)
             else:

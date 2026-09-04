@@ -20,7 +20,7 @@ from .health import CRITICAL, WARN, run_health_checks
 from .learning import Learner
 from .shadow import ShadowTracker
 from .models import LONG, Candle, Position, Trade
-from .notify import Notifier
+from .notify import CommandRouter, Notifier
 from .risk import RiskGuard, size_position, validate_signal_quality
 from .state import Store
 from .strategy import Features, TrendPullbackStrategy, build_strategy
@@ -41,7 +41,9 @@ class TradingEngine:
         self.guard = RiskGuard(cfg, store.load_risk_state())
         self.learner = Learner(cfg, store)
         self.shadow = ShadowTracker(cfg, self.strategy, store)
-        self.notifier = Notifier()
+        self.notifier = Notifier(store)
+        self.router = CommandRouter()
+        self._register_commands()
         self._last_bar: Dict[str, int] = {}
         # Stop yiyen islemler: fiyat sonradan hedefe giderse "stop avlanmasi"
         self._hunt_watch: Dict[str, dict] = {}
@@ -84,6 +86,9 @@ class TradingEngine:
     # -------------------------------------------------------------------- tick
     def tick(self) -> None:
         now = int(time.time() * 1000)
+        # Sahibin komutlari her seyden once islenir: "/kapat" yazdiysan,
+        # bot once onu yapar, sonra piyasaya bakar.
+        self._handle_commands(now)
         equity = self.broker.equity()
         self.store.record_equity(equity, now)
         self.guard.roll_day(now, equity)
@@ -92,6 +97,22 @@ class TradingEngine:
         if isinstance(self.broker, LiveBroker):
             for trade in self.broker.reconcile():
                 self._on_trade_closed(trade, now)
+
+        # Tahtada bekleyen maker giris emirleri: dolan var mi?
+        # Slot sayaci ancak emir DOLDUGUNDA artar; bekleyen emirler
+        # _allocate icinde ayrica hesaba katilir.
+        if self.cfg.execution.entry_order_type == "post_only":
+            try:
+                for pos in self.broker.poll_pending():
+                    self.store.save_position(pos)
+                    self.guard.record_open(now)
+                    self.store.save_risk_state(self.guard.state)
+                    self.notifier.send(
+                        f"GIRIS {pos.side} {pos.symbol} @ {pos.entry_price:.4f}\n"
+                        f"stop {pos.stop:.4f} | tp2 {pos.tp2:.4f} | {pos.leverage}x"
+                    )
+            except Exception:
+                log.exception("Bekleyen giris emirleri kontrol edilemedi")
 
         # Faz 1: acik pozisyonlari yonet ve aday sinyalleri TOPLA.
         # Karar bu fazda verilmez -- genislik filtresi portfoy seviyesinde
@@ -146,16 +167,21 @@ class TradingEngine:
 
         for _adx, _rr, symbol, sig in candidates:
             positions = self.broker.positions()
-            if symbol in positions:
+            # Tahtada bekleyen maker emri de slot tutar: henuz pozisyon degil
+            # ama para taahhut edilmis durumda.
+            pending = self.broker.pending_entries()
+            if symbol in positions or symbol in pending:
                 continue
             if r.max_same_direction > 0:
                 same = sum(1 for p in positions.values() if p.side == sig.side)
+                same += sum(1 for side in pending.values() if side == sig.side)
                 if same >= r.max_same_direction:
                     continue
             # Golgede para riski yok; gunluk limitler olcumu durdurmamali,
             # yoksa "canliya donus" karari eksik veriye dayanir.
             if not shadow_on:
-                allowed, why = self.guard.can_open(now, len(positions), equity)
+                allowed, why = self.guard.can_open(now, len(positions) + len(pending),
+                                                   equity)
                 if not allowed:
                     log.debug("giris kapali (%s)", why)
                     return
@@ -307,6 +333,160 @@ class TradingEngine:
         if self.cfg.shadow.notify_on_transition:
             self.notifier.send(f"CANLIYA DONULDU\n\n{why}\n\n"
                                "Bot gercek islem yapmaya devam ediyor.")
+
+    # --------------------------------------------------------------- komutlar
+    def _register_commands(self) -> None:
+        """Telefondan verilebilecek komutlar.
+
+        Tasarim: OKUMA komutlari serbest, YAZMA komutlari sinirli, YIKICI
+        komut onay ister. Bot otonom calisir; bu komutlar botu yonetmek
+        icin degil, sahibin acil durumda mudahale edebilmesi icindir.
+        """
+        r = self.router
+        r.register("durum", self._cmd_durum, aliases=("status", "d"))
+        r.register("bakiye", self._cmd_bakiye, aliases=("balance",))
+        r.register("rapor", lambda: self.daily_report(int(time.time() * 1000)))
+        r.register("dur", self._cmd_dur, aliases=("durdur", "stop", "pause"))
+        r.register("devam", self._cmd_devam, aliases=("resume", "basla"))
+        r.register("ogrenme", self._cmd_ogrenme, aliases=("learn",))
+        r.register("kapat", self._cmd_kapat, confirm=True,
+                   aliases=("acil_kapat", "acilkapat", "panic"))
+        r.register("yardim", self._cmd_yardim, aliases=("help", "start", "komutlar"))
+
+    def _handle_commands(self, now: int) -> None:
+        try:
+            texts = self.notifier.poll_commands()
+        except Exception:
+            log.exception("Komutlar okunamadi")
+            return
+        for text in texts:
+            try:
+                reply = self.router.dispatch(text, now)
+            except Exception as exc:
+                log.exception("Komut basarisiz: %s", text)
+                reply = f"Komut calistirilamadi: {exc}"
+            if reply is None:
+                reply = ("Anlamadim. /yardim yaz.")
+            log.info("[KOMUT] %s -> %s", text.split()[0], reply.splitlines()[0][:60])
+            self.notifier.send(reply)
+
+    def _cmd_yardim(self) -> str:
+        return ("EDITH komutlari\n\n"
+                "/durum   - acik pozisyonlar, gunun ozeti\n"
+                "/bakiye  - hesap bakiyesi ve serbest marj\n"
+                "/rapor   - gunluk tam ozet\n"
+                "/ogrenme - bot neyi ogrendi\n"
+                "/dur     - yeni islem acmayi durdur (acik pozisyonlar korunur)\n"
+                "/devam   - tekrar islem acmaya basla\n"
+                "/kapat   - TUM pozisyonlari hemen kapat ve dur (onay ister)\n\n"
+                "Not: /dur ve /kapat acik pozisyonlarin borsadaki stop "
+                "emirlerini KALDIRMAZ. Koruma her zaman yerinde.")
+
+    def _cmd_bakiye(self) -> str:
+        eq = self.broker.equity()
+        free = self.broker.free_margin()
+        rs = self.guard.state
+        base = rs.day_start_equity or eq
+        return (f"Bakiye     : {eq:.2f} USDT\n"
+                f"Serbest marj: {free:.2f} USDT\n"
+                f"Bugun      : {rs.realized_pnl_today:+.2f} USDT "
+                f"({rs.realized_pnl_today / base * 100:+.2f}%)\n"
+                f"Mod        : {self.cfg.mode}")
+
+    def _cmd_durum(self) -> str:
+        rs = self.guard.state
+        eq = self.broker.equity()
+        lines = []
+        if rs.paused:
+            lines.append("DURUM: ELLE DURDURULDU (/devam ile ac)")
+        elif rs.shadow_mode:
+            lines.append("DURUM: GOLGE MODU - para riske atilmiyor")
+        elif rs.halted:
+            lines.append(f"DURUM: bugun durdu ({rs.halt_reason})")
+        else:
+            lines.append("DURUM: normal calisiyor")
+        lines.append(f"Bakiye: {eq:.2f} USDT | bugun {rs.realized_pnl_today:+.2f}")
+
+        pos = self.broker.positions()
+        if not pos:
+            lines.append("\nAcik pozisyon yok.")
+        else:
+            lines.append(f"\nAcik pozisyon ({len(pos)}):")
+            for sym, p in pos.items():
+                try:
+                    px = self.market.book_ticker(sym)["mid"]
+                except Exception:
+                    px = p.entry_price
+                pnl = (px - p.entry_price) * p.qty * (1 if p.side == LONG else -1)
+                rmult = pnl / (p.initial_risk_per_unit * p.initial_qty) \
+                    if p.initial_risk_per_unit and p.initial_qty else 0.0
+                lines.append(f"  {sym} {p.side} @ {p.entry_price:.4f} -> {px:.4f}  "
+                             f"{pnl:+.2f} USDT ({rmult:+.2f}R)  stop {p.stop:.4f}")
+        pend = self.broker.pending_entries()
+        if pend:
+            lines.append(f"\nTahtada bekleyen giris: {', '.join(pend)}")
+        lines.append(f"\nBugun {rs.trades_today}/{self.cfg.risk.max_trades_per_day} islem"
+                     f" | ust uste zarar {rs.consecutive_losses}")
+        return "\n".join(lines)
+
+    def _cmd_ogrenme(self) -> str:
+        return self.learner.report()
+
+    def _cmd_dur(self) -> str:
+        st = self.guard.state
+        if st.paused:
+            return "Zaten durdurulmus durumda. /devam ile acabilirsin."
+        st.paused = True
+        self.store.save_risk_state(st)
+        log.warning("[KOMUT] Sahibin talebiyle yeni islem acma DURDURULDU")
+        n = len(self.broker.positions())
+        return ("Yeni islem acma DURDURULDU.\n\n"
+                f"Acik {n} pozisyon oldugu gibi devam ediyor; borsadaki stop ve "
+                "hedef emirleri yerinde. Hepsini simdi kapatmak istersen /kapat.\n"
+                "Tekrar acmak icin /devam.")
+
+    def _cmd_devam(self) -> str:
+        st = self.guard.state
+        if not st.paused:
+            return "Zaten calisiyor."
+        st.paused = False
+        self.store.save_risk_state(st)
+        log.warning("[KOMUT] Sahibin talebiyle islem acma tekrar ACILDI")
+        extra = ""
+        if st.halted:
+            extra = f"\nNot: gunluk limit hala aktif ({st.halt_reason}). Yarin acilir."
+        if st.shadow_mode:
+            extra += "\nNot: bot golge modunda; kanit gelene kadar para riske atmaz."
+        return "Islem acma tekrar ACIK." + extra
+
+    def _cmd_kapat(self) -> str:
+        now = int(time.time() * 1000)
+        st = self.guard.state
+        st.paused = True
+        self.store.save_risk_state(st)
+        closed, failed = [], []
+        for symbol, pos in list(self.broker.positions().items()):
+            try:
+                trade = self.broker.close_position(symbol, 1.0, pos.entry_price,
+                                                   "acil-kapatma")
+                if trade:
+                    self._on_trade_closed(trade, now)
+                    closed.append(f"{symbol} {trade.pnl:+.2f}")
+                else:
+                    failed.append(symbol)
+            except Exception as exc:
+                log.exception("%s acil kapatilamadi", symbol)
+                failed.append(f"{symbol} ({exc})")
+        log.warning("[KOMUT] ACIL KAPATMA: %d kapandi, %d basarisiz",
+                    len(closed), len(failed))
+        out = ["ACIL KAPATMA yapildi. Bot ayrica DURDURULDU."]
+        out.append(f"Kapanan: {', '.join(closed) if closed else 'yok'}")
+        if failed:
+            out.append(f"KAPATILAMAYAN: {', '.join(failed)}\n"
+                       "Bunlari Binance uygulamasindan elle kontrol et.")
+        out.append(f"Bakiye: {self.broker.equity():.2f} USDT")
+        out.append("Tekrar baslatmak icin /devam.")
+        return "\n".join(out)
 
     def _alert(self, rep, now: int) -> None:
         """Bildirim gonderir ama spam yapmaz: ayni uyari gunde bir kez."""

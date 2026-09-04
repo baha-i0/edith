@@ -134,6 +134,9 @@ class RiskState:
     shadow_mode: bool = False
     shadow_since_ms: int = 0
     shadow_reason: str = ""
+    # Sahibin Telegram'dan /dur demesiyle set edilir. Gun degisiminde
+    # SIFIRLANMAZ: patron durdurduysa, durur. Sadece /devam kaldirir.
+    paused: bool = False
 
 
 class RiskGuard:
@@ -159,6 +162,11 @@ class RiskGuard:
         r = self.cfg.risk
         s = self.state
         self.roll_day(now_ms, equity)
+
+        # Sahibin elle durdurmasi her seyin onunde: hicbir hesaplama bunu
+        # gecersiz kilamaz.
+        if s.paused:
+            return False, "elle durduruldu (/devam ile ac)"
 
         # Sira onemli: once GUN BOYU gecerli durdurmalar (bayrak set edilmeli),
         # sonra gecici engeller. Ters sirada 'halted' bayragi soguma bitene

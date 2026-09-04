@@ -216,6 +216,31 @@ class BinanceFutures(MarketData):
             params["newClientOrderId"] = client_id
         return self._request("POST", "/fapi/v1/order", params, signed=True)
 
+    def post_only_order(self, symbol: str, side: str, qty: float, price: float,
+                        client_id: str = "") -> dict:
+        """Maker-only limit emri (timeInForce=GTX).
+
+        GTX = "Good Till Crossing": emir tahtaya maker olarak yazilamayacaksa
+        (yani aninda dolup taker olacaksa) borsa emri REDDEDER. Bu sayede
+        %0.02 maker komisyonu garanti; %0.05 taker'a kazara dusulmez.
+        Reddedilme normal bir sonuctur, hata degil -- cagiran taraf ele alir.
+        """
+        params: Dict[str, Any] = {
+            "symbol": symbol, "side": side, "type": "LIMIT", "quantity": qty,
+            "price": price, "timeInForce": "GTX",
+        }
+        if client_id:
+            params["newClientOrderId"] = client_id
+        return self._request("POST", "/fapi/v1/order", params, signed=True)
+
+    def query_order(self, symbol: str, client_id: str) -> dict:
+        return self._request("GET", "/fapi/v1/order",
+                             {"symbol": symbol, "origClientOrderId": client_id}, signed=True)
+
+    def cancel_order(self, symbol: str, client_id: str) -> dict:
+        return self._request("DELETE", "/fapi/v1/order",
+                             {"symbol": symbol, "origClientOrderId": client_id}, signed=True)
+
     def stop_market(self, symbol: str, side: str, stop_price: float,
                     client_id: str = "") -> dict:
         """Tum pozisyonu kapatan koruma emri (closePosition=true).
