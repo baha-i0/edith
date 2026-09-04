@@ -341,8 +341,21 @@ class LiveBroker(Broker):
         exit_side = "SELL" if pos.side == LONG else "BUY"
         if portion >= 1.0:
             self.client.cancel_all(symbol)
-        self.client.market_order(symbol, exit_side, qty, reduce_only=True)
-        return self._finalize(pos, reason) if portion >= 1.0 else None
+        order = self.client.market_order(symbol, exit_side, qty, reduce_only=True)
+        if portion >= 1.0:
+            return self._finalize(pos, reason)
+
+        # KISMI cikis: islem kaydi olusmaz (istatistikleri bozardi) ama
+        # gerceklesen kar cuzdana girer. Bunu pozisyonda takip etmezsek
+        # nakit akisi tespiti bunu "para yatirma" saniyor -- ve pozisyon
+        # tamamen kapandiginda ayni tutari "para cekme" saniyor. Ikisi de
+        # tabani yanlis oynatir.
+        px = float(order.get("avgPrice") or 0) or price_hint
+        pos.realized_pnl += (px - pos.entry_price) * qty * pos.direction
+        pos.qty = max(0.0, pos.qty - qty)
+        pos.tp1_filled = True
+        self.store.save_position(pos)
+        return None
 
     # ------------------------------------------------------------ mutabakat
     def reconcile(self) -> list[Trade]:

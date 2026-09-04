@@ -316,6 +316,46 @@ ama es zamanli 4 islem birden delebilir. Kripto pozisyonlari yuksek
 korelasyonlu; hepsinin ayni anda ters gitmesi uzak bir ihtimal degil,
 tipik bir cokus gunu. Breakeven'a cekilmis stoplar bu toplamdan dusulur.
 
+### Para yatirma ve cekme
+
+Cirpinan tabanin "asla dusmez" kurali bir tuzak yaratir: hesabin 1000$'a
+cikip taban 700$ olusmusken 500$ cekersen, bakiyen 500$ ama taban 700$
+kalir -- yastik sifir, bot **kalici olarak** islem acmaz. Hesapta paran
+dururken.
+
+Bot bunu kendi cozer. Her turda bakiye degisimi ile islem kar/zarari
+karsilastirilir; aradaki fark bir nakit akisidir:
+
+```
+nakit_akisi = (bakiye - onceki_bakiye) - (toplam_pnl - onceki_pnl)
+```
+
+Borsaya ekstra istek gerekmez. Akis tespit edilirse zirve o kadar
+kaydirilir ve taban yeniden hesaplanir. **"Taban asla dusmez" kurali ZARAR
+icindir**; para cekmek zarar degildir, orada dusmesi dogrudur.
+
+| olay | bakiye | taban | dogru mu |
+|------|--------|-------|----------|
+| baslangic | 1000$ | 700$ | |
+| 500$ cekildi | 500$ | **350$** | evet, bot calismaya devam eder |
+| 200$ yatirildi | 700$ | **490$** | evet, yeni para da korunur |
+| 100$ islem zarari | 600$ | **490$** | evet, zararda taban DUSMEZ |
+
+Esik: bakiyenin %1'i ya da 1 USDT (hangisi buyukse). Funding odemeleri ve
+yuvarlama farklari bunun altinda kalir, tabani oynatmaz.
+
+Kismi hedef (TP1) dolumu ozel bir durum: cuzdana para girer ama islem
+kaydi olusmaz (istatistikleri bozardi). Bu yuzden acik pozisyonlarin
+`realized_pnl` degeri de hesaba katilir -- katilmasaydi kismi dolum "para
+yatirma", tam kapanis da ayni tutarda "para cekme" sanilirdi.
+
+Otomatik tespit bir sekilde kacirirsa kurtarma kapisi var:
+
+```bash
+python -m bot floor            # mevcut durumu goster
+python -m bot floor --reset    # tabani su anki bakiyeye gore yeniden kur
+```
+
 ### Neyi garanti etmez
 
 Taban **gap riskine karsi koruma degildir.** Fiyat stop seviyesini

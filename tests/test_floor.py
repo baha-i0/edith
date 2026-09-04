@@ -200,3 +200,95 @@ def test_tabansiz_carpan_da_kirpilir(f):
     s = size_position(1000.0, 1000.0, 100.0, 97.0, f, c.risk, 5)
     assert s.ok
     assert s.risk_amount <= 1000.0 * 0.02 * 1.05, "equity'nin %2 tavani asildi"
+
+
+# ==================================================== ikinci denetim: nakit akisi
+from bot.risk import apply_cash_flow
+
+
+def test_kar_cekince_bot_KILITLENMEZ():
+    """En olasi gercek senaryo: bot kar etti, kullanici karini cekti.
+
+    Cirpinan taban 'asla dusmez' kuralindan dolayi taban eski zirvede
+    kalirsa yastik sifirlanir ve bot KALICI olarak islem acmaz -- hesapta
+    para dururken. Nakit akisi tespiti bunu onlemeli.
+    """
+    c = _cfg(capital_floor_ratchet_pct=70.0, risk_per_trade_pct=6.0)
+    st = RiskState()
+    apply_cash_flow(c.risk, st, 1000.0, 0.0)
+    update_floor(c.risk, st, 1000.0)
+    assert effective_floor(c.risk, st) == pytest.approx(700.0)
+
+    # 500 cekildi: bakiye dustu ama islem kar/zarari DEGISMEDI
+    akis = apply_cash_flow(c.risk, st, 500.0, 0.0)
+    assert akis == pytest.approx(-500.0)
+    assert effective_floor(c.risk, st) == pytest.approx(350.0)
+    assert risk_base(500.0, c.risk, st) == pytest.approx(150.0)
+
+
+def test_para_yatirinca_taban_yukselir():
+    c = _cfg(capital_floor_ratchet_pct=70.0)
+    st = RiskState()
+    apply_cash_flow(c.risk, st, 300.0, 0.0)
+    update_floor(c.risk, st, 300.0)
+    akis = apply_cash_flow(c.risk, st, 800.0, 0.0)      # +500 yatirildi
+    assert akis == pytest.approx(500.0)
+    assert effective_floor(c.risk, st) == pytest.approx(560.0)   # 800 * %70
+
+
+def test_GERCEK_zararda_taban_DUSMEZ():
+    """Nakit akisi duzeltmesi 'asla dusmez' kuralini delmemeli."""
+    c = _cfg(capital_floor_ratchet_pct=70.0)
+    st = RiskState()
+    apply_cash_flow(c.risk, st, 1000.0, 0.0)
+    update_floor(c.risk, st, 1000.0)
+    # 300 zarar: bakiye 700, kumulatif pnl -300 -> akis SIFIR olmali
+    akis = apply_cash_flow(c.risk, st, 700.0, -300.0)
+    assert akis == 0.0
+    assert effective_floor(c.risk, st) == pytest.approx(700.0), "taban dusmemeli"
+
+
+def test_kismi_cikis_para_yatirma_SANILMAZ():
+    """Kismi TP1 cuzdani buyutur ama islem kaydi olusturmaz. Acik
+    pozisyonun realized_pnl'i hesaba katilmazsa 'para yatirma' sanilir,
+    tam kapanista da ayni tutar 'para cekme' sanilirdi."""
+    c = _cfg(capital_floor_ratchet_pct=70.0)
+    st = RiskState()
+    apply_cash_flow(c.risk, st, 1000.0, 0.0)
+    update_floor(c.risk, st, 1000.0)
+    # kismi TP1: +80 cuzdana girdi, toplam_pnl de +80 (pos.realized_pnl dahil)
+    assert apply_cash_flow(c.risk, st, 1080.0, 80.0) == 0.0
+    # tam kapanis: +60 daha, trade kaydi toplam 140
+    assert apply_cash_flow(c.risk, st, 1140.0, 140.0) == 0.0
+
+
+def test_kucuk_farklar_nakit_akisi_SAYILMAZ():
+    """Funding odemeleri ve yuvarlama farklari tabani oynatmamali."""
+    c = _cfg(capital_floor_ratchet_pct=70.0)
+    st = RiskState()
+    apply_cash_flow(c.risk, st, 1000.0, 0.0)
+    assert apply_cash_flow(c.risk, st, 1000.30, 0.0) == 0.0   # funding
+    assert apply_cash_flow(c.risk, st, 999.50, 0.0) == 0.0
+
+
+def test_ilk_calismada_akis_uretilmez():
+    c = _cfg(capital_floor_ratchet_pct=70.0)
+    st = RiskState()
+    assert apply_cash_flow(c.risk, st, 300.0, 0.0) == 0.0
+    assert st.last_equity_seen == pytest.approx(300.0)
+
+
+def test_akis_referansi_yeniden_baslatmaya_dayanir(tmp_path):
+    from bot.state import Store
+    c = _cfg(capital_floor_ratchet_pct=70.0)
+    store = Store(str(tmp_path / "f.db"), mode="paper")
+    st = store.load_risk_state()
+    apply_cash_flow(c.risk, st, 1000.0, 0.0)
+    update_floor(c.risk, st, 1000.0)
+    store.save_risk_state(st)
+
+    st2 = store.load_risk_state()        # yeniden baslatma
+    assert st2.last_equity_seen == pytest.approx(1000.0)
+    assert st2.floor_usdt == pytest.approx(700.0)
+    # restart sonrasi cekme hala dogru algilanmali
+    assert apply_cash_flow(c.risk, st2, 500.0, 0.0) == pytest.approx(-500.0)

@@ -204,3 +204,42 @@ def test_taban_kapaliyken_kontrol_gurultu_YAPMAZ(tmp_path):
 
     rep = run_health_checks(cfg, store, None, B())
     assert not [c for c in rep.checks if c.name == "Sermaye tabani"]
+
+
+def test_bakiye_taban_altindaysa_mesaj_FARKLI_olmali(tmp_path):
+    """Iki farkli durum, iki farkli tavsiye:
+       - yastik zarardan tukendi  -> 'taban isini yapti'
+       - bakiye tabanin altinda   -> 'muhtemelen para cektin'
+    Karistirmak, parasini cekmis birine sistem bozuldu dusundurur."""
+    from bot.config import Config
+    from bot.health import CRITICAL, run_health_checks
+    from bot.state import Store
+
+    cfg = Config()
+    cfg.risk.capital_floor_usdt = 700.0
+    cfg.risk.min_cushion_usdt = 25.0
+    store = Store(str(tmp_path / "h2.db"), mode="paper")
+
+    class B:
+        def __init__(self, eq):
+            self._eq = eq
+
+        def equity(self):
+            return self._eq
+
+        def positions(self):
+            return {}
+
+    # bakiye tabanin ALTINDA -> para cekme tavsiyesi
+    c = [x for x in run_health_checks(cfg, store, None, B(500.0)).checks
+         if x.name == "Sermaye tabani"][0]
+    assert c.severity == CRITICAL
+    assert "ALTINDA" in c.message
+    assert "floor --reset" in c.action
+
+    # bakiye tabanin USTUNDE ama yastik ince -> zarar tavsiyesi
+    c2 = [x for x in run_health_checks(cfg, store, None, B(710.0)).checks
+          if x.name == "Sermaye tabani"][0]
+    assert c2.severity == CRITICAL
+    assert "Yastik tukendi" in c2.message
+    assert "isini yapti" in c2.action

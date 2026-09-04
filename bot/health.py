@@ -127,14 +127,27 @@ def _check_cushion(cfg: Config, store, broker) -> Optional["Check"]:
     yastik = max(0.0, equity - floor)
     esik = cfg.risk.min_cushion_usdt
     if yastik < esik:
+        # Iki farkli durum, iki farkli tavsiye. Karistirmak kullaniciyi
+        # yanlis yone gonderir: "sermayen korundu" demek, aslinda parasini
+        # cekmis birine sistemin bozuldugunu dusundurur.
+        if equity < floor:
+            return Check(
+                "Sermaye tabani", CRITICAL,
+                f"Bakiye ({equity:.2f}) tabanin ({floor:.2f}) ALTINDA. "
+                "Bot yeni islem ACMIYOR.",
+                "Bu genellikle zarardan degil, hesaptan para cekmekten ya da "
+                "ayar degisikliginden olur. Bot para yatirma/cekme islemlerini "
+                "kendi algilar ve tabani kaydirir; algilamadiysa 'python -m bot "
+                "floor --reset' ile tabani su anki bakiyeye gore yeniden kur.",
+            )
         return Check(
             "Sermaye tabani", CRITICAL,
             f"Yastik tukendi: bakiye {equity:.2f}, taban {floor:.2f} -> "
             f"riske atilabilir {yastik:.2f} (esik {esik:.2f}). "
             "Bot yeni islem ACMIYOR.",
-            "Taban isini yapti, sermayen korundu. Devam etmek istersen ya "
-            "hesaba para ekle ya da capital_floor_usdt'yi dusur. "
-            "Once NEDEN buraya gelindigine bak.",
+            "Taban isini yapti: zarar tabanda durduruldu, sermayenin geri "
+            "kalani korundu. Devam etmek istersen hesaba para ekle. Once "
+            "NEDEN buraya gelindigine bak -- strateji bozulmus olabilir.",
         )
     if yastik < esik * 2:
         return Check(

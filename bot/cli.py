@@ -225,6 +225,63 @@ def cmd_status(args) -> int:
     return 0
 
 
+# --------------------------------------------------------------------- floor
+def cmd_floor(args) -> int:
+    """Sermaye tabanini gosterir; --reset ile su anki bakiyeye gore yeniden kurar.
+
+    Kurtarma kapisi: bot para yatirma/cekmeyi kendi algilar, ama ayar
+    degistirdiysen ya da algilama bir sekilde kacirdiysa taban bakiyenin
+    ustunde kalabilir ve bot hicbir islem acmaz. Bu komut o kilidi acar.
+    """
+    from .risk import effective_floor, risk_base
+
+    cfg = _load(args)
+    cfg.mode = args.mode or cfg.mode
+    store = Store(cfg.state_path, mode=cfg.mode)
+    st = store.load_risk_state()
+    floor = effective_floor(cfg.risk, st)
+
+    if floor <= 0:
+        print("Sermaye tabani KAPALI (capital_floor_usdt ve "
+              "capital_floor_ratchet_pct ikisi de 0).")
+        return 0
+
+    son = store.last_equity()
+    equity = son[1] if son else 0.0
+    print(f"Mod             : {cfg.mode}")
+    print(f"Son bakiye      : {equity:.2f} USDT")
+    print(f"Sabit taban     : {cfg.risk.capital_floor_usdt:.2f} USDT")
+    print(f"Cirpinan taban  : {st.floor_usdt:.2f} USDT "
+          f"(zirve {st.peak_equity:.2f} x %{cfg.risk.capital_floor_ratchet_pct})")
+    print(f"GECERLI TABAN   : {floor:.2f} USDT")
+    print(f"Yastik          : {risk_base(equity, cfg.risk, st):.2f} USDT "
+          f"(durma esigi {cfg.risk.min_cushion_usdt:.2f})")
+
+    if not args.reset:
+        if equity < floor:
+            print("\nBakiye tabanin ALTINDA -- bot islem acmiyor.")
+            print("Duzeltmek icin: python -m bot floor --reset")
+        return 0
+
+    if equity <= 0:
+        print("\nBakiye okunamadi; once botu bir kez calistir.")
+        return 1
+    eski_zirve, eski_taban = st.peak_equity, st.floor_usdt
+    st.peak_equity = equity
+    st.floor_usdt = (equity * cfg.risk.capital_floor_ratchet_pct / 100.0
+                     if cfg.risk.capital_floor_ratchet_pct > 0 else 0.0)
+    # Nakit akisi tespitinin referansini da tazele, yoksa bir sonraki
+    # turda bu degisikligi para cekme sanip tabani tekrar oynatir.
+    st.last_equity_seen = equity
+    st.last_pnl_seen = store.stats().get("net_pnl", 0.0)
+    store.save_risk_state(st)
+    print(f"\nTaban yeniden kuruldu.")
+    print(f"  zirve : {eski_zirve:.2f} -> {st.peak_equity:.2f}")
+    print(f"  taban : {eski_taban:.2f} -> {st.floor_usdt:.2f}")
+    print(f"  gecerli taban artik: {effective_floor(cfg.risk, st):.2f} USDT")
+    return 0
+
+
 # ----------------------------------------------------------------- dashboard
 def cmd_dashboard(args) -> int:
     """Paneli tek basina acar (bot calismiyorken gecmise bakmak icin).
@@ -402,6 +459,13 @@ def build_parser() -> argparse.ArgumentParser:
     l.add_argument("--symbol")
     l.add_argument("--reset", action="store_true", help="ogrenme durumunu sifirla")
     l.set_defaults(func=cmd_learn)
+
+    fl = sub.add_parser("floor", help="sermaye tabanini goster / sifirla")
+    fl.add_argument("--mode", help="paper/testnet/live")
+    fl.add_argument("--symbol")
+    fl.add_argument("--reset", action="store_true",
+                    help="tabani su anki bakiyeye gore yeniden kur")
+    fl.set_defaults(func=cmd_floor)
 
     w = sub.add_parser("dashboard", help="tarayicida izleme paneli ac")
     w.add_argument("--mode", help="paper/testnet/live")

@@ -22,8 +22,9 @@ from .shadow import ShadowTracker
 from .models import LONG, Candle, Position, Trade
 from .dashboard import DashboardServer, build_state
 from .notify import CommandRouter, Notifier
-from .risk import (RiskGuard, effective_floor, open_risk_total,
-                   size_position, update_floor, validate_signal_quality)
+from .risk import (RiskGuard, apply_cash_flow, effective_floor,
+                   open_risk_total, size_position, update_floor,
+                   validate_signal_quality)
 from .state import Store
 from .strategy import Features, TrendPullbackStrategy, build_strategy
 
@@ -105,8 +106,25 @@ class TradingEngine:
         # Taban GERCEKLESMIS bakiye uzerinden cirpinir. Acik pozisyonun
         # kagit uzerindeki kari zirve saydirilirsa, hic bankaya girmemis
         # bir paraya gore taban kilitlenir ve bot felc olur.
-        yeni = update_floor(self.cfg.risk, self.guard.state,
-                            self.broker.realized_equity())
+        gerceklesmis = self.broker.realized_equity()
+        # Once nakit akisi: para yatirdiysan/cektiysen taban kaydirilir.
+        # Bu olmadan kar cekmek botu kalici olarak felc ederdi.
+        # Toplam gerceklesen kar = kapanmis islemler + ACIK pozisyonlarin
+        # kismi cikislarindan gelen kar. Ikincisi olmadan kismi TP1 dolumu
+        # "para yatirma", tam kapanis da "para cekme" sanilirdi.
+        toplam_pnl = self.store.stats().get("net_pnl", 0.0) + sum(
+            p.realized_pnl for p in self.broker.positions().values())
+        akis = apply_cash_flow(self.cfg.risk, self.guard.state, gerceklesmis,
+                               toplam_pnl)
+        if akis:
+            log.warning("Nakit akisi tespit edildi: %+.2f USDT -> zirve %.2f, "
+                        "taban %.2f", akis, self.guard.state.peak_equity,
+                        self.guard.state.floor_usdt)
+            self.notifier.send(
+                f"{'PARA YATIRMA' if akis > 0 else 'PARA CEKME'} algilandi: "
+                f"{akis:+.2f} USDT\n"
+                f"Taban buna gore guncellendi: {self.guard.state.floor_usdt:.2f} USDT")
+        yeni = update_floor(self.cfg.risk, self.guard.state, gerceklesmis)
         if yeni > onceki > 0:
             log.info("Taban yukseldi: %.2f -> %.2f USDT (zirve %.2f)",
                      onceki, yeni, self.guard.state.peak_equity)

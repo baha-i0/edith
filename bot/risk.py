@@ -66,6 +66,53 @@ def effective_floor(risk_cfg: RiskConfig, state: Optional["RiskState"] = None) -
     return floor
 
 
+def apply_cash_flow(risk_cfg: RiskConfig, state: "RiskState", realized_equity: float,
+                    cumulative_pnl: float) -> float:
+    """Para yatirma/cekme tespit eder ve tabani buna gore KAYDIRIR.
+
+    Neden gerekli: cirpinan taban "asla dusmez" kuralindan dolayi, karini
+    cektiginde taban eski zirvede kilitli kalir. 1000$'a cikip 700$ taban
+    olusmusken 500$ cekersen, bakiyen 500$ ama taban 700$ -- yastik sifir,
+    bot KALICI olarak islem acmaz. Ustelik saglik kontrolu bunu "zarar
+    ettin, taban seni korudu" diye rapor eder ki yanlistir.
+
+    Cozum: bakiye degisimi ile islem kar/zarari arasindaki FARK bir nakit
+    akisidir (yatirma ya da cekme). Borsaya ekstra istek atmadan hesaplanir:
+
+        nakit_akisi = (bakiye - onceki_bakiye) - (toplam_pnl - onceki_pnl)
+
+    Tespit edilirse zirve o kadar kaydirilir ve taban yeniden hesaplanir.
+    "Taban asla dusmez" kurali ZARAR icin gecerlidir; para cekmek zarar
+    degildir, o yuzden burada dusmesi DOGRUDUR.
+
+    Backtest'te para yatirma/cekme yoktur; orada bu fonksiyon cagrilmaz ve
+    cagrilsa da akis sifir cikardi. Parite bozulmuyor.
+    """
+    if state.last_equity_seen <= 0:      # ilk calisma: sadece baslangici kaydet
+        state.last_equity_seen = realized_equity
+        state.last_pnl_seen = cumulative_pnl
+        return 0.0
+
+    delta_equity = realized_equity - state.last_equity_seen
+    delta_pnl = cumulative_pnl - state.last_pnl_seen
+    akis = delta_equity - delta_pnl
+
+    # Esik: funding odemeleri ve yuvarlama farklari nakit akisi sayilmamali.
+    esik = max(1.0, realized_equity * 0.01)
+    if abs(akis) < esik:
+        state.last_equity_seen = realized_equity
+        state.last_pnl_seen = cumulative_pnl
+        return 0.0
+
+    state.peak_equity = max(0.0, state.peak_equity + akis)
+    if risk_cfg.capital_floor_ratchet_pct > 0:
+        # Para cekildiyse taban DUSER -- kural "zararda dusmez" idi.
+        state.floor_usdt = state.peak_equity * risk_cfg.capital_floor_ratchet_pct / 100.0
+    state.last_equity_seen = realized_equity
+    state.last_pnl_seen = cumulative_pnl
+    return akis
+
+
 def update_floor(risk_cfg: RiskConfig, state: "RiskState", equity: float) -> float:
     """Zirveyi ve cirpinan tabani gunceller. Yeni tabani doner."""
     if equity > state.peak_equity:
@@ -227,6 +274,10 @@ class RiskState:
     # yeniden baslatmada sifirlanirsa "kilitlenen kar" kilidi acilirdi.
     peak_equity: float = 0.0
     floor_usdt: float = 0.0
+    # Para yatirma/cekme tespiti icin son gorulen degerler. Bunlar olmadan
+    # bir para cekme islemi "zarar" sanilir ve taban hesabi felc eder.
+    last_equity_seen: float = 0.0
+    last_pnl_seen: float = 0.0
     # Sahibin Telegram'dan /dur demesiyle set edilir. Gun degisiminde
     # SIFIRLANMAZ: patron durdurduysa, durur. Sadece /devam kaldirir.
     paused: bool = False
