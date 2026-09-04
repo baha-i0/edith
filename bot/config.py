@@ -92,6 +92,47 @@ class ExecutionConfig:
 
 
 @dataclass
+class LearningConfig:
+    """Ogrenme katmani ayarlari.
+
+    Varsayilanlar KASTEN muhafazakar: bir kovayi devre disi birakmak icin
+    en az 30 islem ve tek yonlu %95 anlamlilik gerekiyor. Bu esikleri
+    dusurmek "daha hizli ogrenen" bir bot yapmaz, gurultuye uyum saglayan
+    bir bot yapar.
+    """
+    enabled: bool = True
+    # --- yavas ogrenme (istatistiksel) ---
+    min_trades_per_bucket: int = 30      # bu sayinin altinda hicbir karar alinmaz
+    min_trades_for_sizing: int = 40      # risk carpani icin daha da fazlasi gerekir
+    significance_z: float = 2.33         # tek yonlu %99 -- 1.64 DEGIL, cunku
+                                         # her islemde test etmek nominal hatayi
+                                         # asar (bkz. learning._maybe_bench)
+    bench_eval_every: int = 10           # bank testi her N islemde bir yapilir
+    prior_expectancy_r: float = 0.11     # backtest beklentisi (onsel inanc)
+    prior_strength: float = 40.0         # onsele kac islemlik guven veriliyor
+    trade_r_sd: float = 1.3              # islem basi R standart sapmasi
+    bench_days: int = 14
+    probation_multiplier: float = 0.6
+    # --- risk olcegi ---
+    max_risk_multiplier: float = 1.0     # 1.0 = ogrenme riski ARTIRAMAZ
+    min_risk_multiplier: float = 0.6
+    # VARSAYILAN KAPALI. Olculdu: ~3 puan CAGR maliyetine ~4 puan dusus
+    # azaltiyor -- yani risk-getiri oranini iyilestirmiyor, sadece olcegi
+    # kuculutuyor. Sermaye korumasi psikolojik olarak degerliyse ac.
+    drawdown_scaling: bool = False
+    drawdown_full_cut_pct: float = 25.0
+    # --- stop kalibrasyonu ---
+    stop_calibration: bool = True
+    stop_hunt_lookback_bars: int = 12
+    stop_hunt_rate_threshold: float = 0.45
+    stop_widen_step: float = 0.15
+    stop_widen_max: float = 1.5
+    # --- hizli ogrenme (operasyonel) ---
+    mistake_repeat_threshold: int = 3
+    mistake_block_days: int = 7
+
+
+@dataclass
 class Config:
     mode: str = "paper"
     symbols: List[str] = field(default_factory=lambda: ["BNBUSDT"])
@@ -103,6 +144,7 @@ class Config:
     risk: RiskConfig = field(default_factory=RiskConfig)
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
+    learning: LearningConfig = field(default_factory=LearningConfig)
 
     # ---- API kimlik bilgileri sadece ortam degiskeninden okunur ----
     @property
@@ -118,7 +160,7 @@ class Config:
         return os.getenv("BINANCE_API_SECRET", "")
 
     def validate(self) -> None:
-        r, s, a, e = self.risk, self.strategy, self.account, self.execution
+        r, s, a, e, lrn = self.risk, self.strategy, self.account, self.execution, self.learning
         errs: List[str] = []
 
         if self.mode not in VALID_MODES:
@@ -175,6 +217,26 @@ class Config:
         if e.max_spread_bps <= 0:
             errs.append("max_spread_bps > 0 olmali")
 
+        if lrn.enabled:
+            if lrn.min_trades_per_bucket < 20:
+                errs.append("learning.min_trades_per_bucket >= 20 olmali "
+                            "(daha azi gurultuden ders cikarmaktir)")
+            if lrn.significance_z < 1.64:
+                errs.append("learning.significance_z >= 1.64 olmali; olculen yanlis "
+                            "bank orani bu esigin altinda hizla buyuyor")
+            if lrn.bench_eval_every < 1:
+                errs.append("learning.bench_eval_every >= 1 olmali")
+            if lrn.max_risk_multiplier > 1.5:
+                errs.append("learning.max_risk_multiplier 1.5'i asamaz")
+            if not 0 < lrn.min_risk_multiplier <= lrn.max_risk_multiplier:
+                errs.append("0 < min_risk_multiplier <= max_risk_multiplier olmali")
+            if lrn.prior_strength < 0:
+                errs.append("learning.prior_strength negatif olamaz")
+            if lrn.stop_widen_max < 1.0:
+                errs.append("learning.stop_widen_max >= 1.0 olmali")
+            if lrn.bench_days < 1:
+                errs.append("learning.bench_days >= 1 olmali")
+
         if self.mode in ("testnet", "live") and not (self.api_key and self.api_secret):
             errs.append(f"{self.mode} modu icin API anahtarlari ortam degiskenlerinde tanimli degil")
 
@@ -223,6 +285,7 @@ def load_config(path: str | Path) -> Config:
         ("risk", RiskConfig),
         ("strategy", StrategyConfig),
         ("execution", ExecutionConfig),
+        ("learning", LearningConfig),
     ):
         nested[key] = _build(cls, raw.pop(key, {}) or {})
 

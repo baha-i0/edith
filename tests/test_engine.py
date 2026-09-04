@@ -172,3 +172,75 @@ def test_engine_survives_market_data_error(tmp_path, monkeypatch, trending_up):
 
     monkeypatch.setattr(market, "klines", boom)
     engine.tick()   # exception disari sizmamali
+
+
+# ------------------------------------------------------- ogrenme entegrasyonu
+def test_engine_blocks_entry_for_benched_symbol(tmp_path, monkeypatch, trending_up):
+    """Kanitlanmis negatif kova motor seviyesinde de girisi engellemeli."""
+    from bot.models import Trade
+    engine, _m, broker, _s = _engine(tmp_path, trending_up)
+    _forced_signal(monkeypatch)
+    now = int(time.time() * 1000)
+    for _ in range(35):
+        engine.learner.record_trade(
+            Trade("TESTUSDT", LONG, 1, 100, 99, now, now, -1.0, 0.1, -1.0, "stop",
+                  context={"adx": 30.0, "atr_pct": 1.0}), now)
+    engine.tick()
+    assert broker.positions() == {}, "banklanmis sembolde pozisyon acildi"
+
+
+def test_engine_records_min_notional_mistake(tmp_path, monkeypatch, trending_up):
+    """Bakiye yetmiyorsa bot ayni hatayi sonsuza kadar tekrarlamamali."""
+    engine, _m, broker, _s = _engine(tmp_path, trending_up)
+    engine.cfg.account.paper_start_balance = 5.0
+    engine.broker.balance = 5.0
+    engine.cfg.learning.mistake_repeat_threshold = 2
+
+    def big_min_notional(symbol):
+        return SymbolFilters(symbol, 0.01, 0.01, 0.01, 100_000.0)
+
+    monkeypatch.setattr(engine.market, "filters", big_min_notional)
+    _forced_signal(monkeypatch)
+
+    for _ in range(3):
+        engine._last_bar.clear()
+        engine.tick()
+
+    assert broker.positions() == {}
+    assert engine.learner.mistakes.counts, "hata defterine hicbir sey yazilmadi"
+    ok, why = engine.learner.allow_entry("TESTUSDT", {"adx": 30, "atr_pct": 1.0},
+                                         int(time.time() * 1000))
+    assert not ok and "operasyonel" in why
+
+
+def test_engine_applies_learned_stop_width(tmp_path, monkeypatch, trending_up):
+    """Ogrenilmis stop carpani uygulanmali ve R katlari korunmali."""
+    engine, _m, broker, _s = _engine(tmp_path, trending_up)
+    _forced_signal(monkeypatch, stop_pct=0.02)
+    engine.learner.buckets["sym:TESTUSDT"] = __import__(
+        "bot.learning", fromlist=["BucketStats"]).BucketStats(
+        key="sym:TESTUSDT", stop_widen_mult=1.5)
+
+    engine.tick()
+    pos = broker.positions()["TESTUSDT"]
+    stop_dist = abs(pos.entry_price - pos.stop)
+    # %2 stop x 1.5 = %3
+    assert stop_dist / pos.entry_price == pytest.approx(0.03, rel=0.02)
+    # R katlari korunmali
+    c = engine.cfg.strategy
+    assert (pos.tp2 - pos.entry_price) / stop_dist == pytest.approx(c.tp2_r, rel=0.02)
+
+
+def test_learning_survives_restart(tmp_path, monkeypatch, trending_up):
+    from bot.learning import Learner
+    from bot.models import Trade
+    engine, _m, _b, store = _engine(tmp_path, trending_up)
+    now = int(time.time() * 1000)
+    for _ in range(35):
+        engine.learner.record_trade(
+            Trade("TESTUSDT", LONG, 1, 100, 99, now, now, -1.0, 0.1, -1.0, "stop",
+                  context={"adx": 30.0, "atr_pct": 1.0}), now)
+    engine.learner.save()
+
+    fresh = Learner(engine.cfg, store)
+    assert not fresh.allow_entry("TESTUSDT", {"adx": 30, "atr_pct": 1.0}, now)[0]

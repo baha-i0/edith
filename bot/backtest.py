@@ -14,11 +14,12 @@ surpriz yasamamak. Iyimser backtest, gerceklikte odenen faturadir.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, List, Optional, Sequence
 
 from .config import Config
 from .models import LONG, SHORT, Candle, Position, SymbolFilters, Trade
+from .learning import Learner
 from .risk import RiskGuard, RiskState, size_position, validate_signal_quality
 from .strategy import Features, build_strategy
 
@@ -358,7 +359,8 @@ class PortfolioResult:
 
 def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
                            filters: Optional[Dict[str, SymbolFilters]] = None,
-                           start_equity: Optional[float] = None) -> PortfolioResult:
+                           start_equity: Optional[float] = None,
+                           learner: Optional[Learner] = None) -> PortfolioResult:
     strat = build_strategy(cfg.strategy)
     e = cfg.execution
     slip = e.slippage_bps / 10_000.0
@@ -381,6 +383,10 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
     res.days = (timeline[-1] - timeline[0]) / 86_400_000
 
     guard = RiskGuard(cfg, RiskState())
+    # Ogrenme katmani backtest'te de calisir. Amac: "ogrenen bot" fikrinin
+    # gercekten faydali olup olmadigini olcmek. Olculemeyen ozellik, ozellik degil.
+    if learner is None and cfg.learning.enabled:
+        learner = Learner(cfg, store=None)
     positions: Dict[str, Position] = {}
     pending: Dict[str, object] = {}
 
@@ -397,8 +403,14 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
             entry = bar.open * (1 + slip) if sig.side == LONG else bar.open * (1 - slip)
             drift = entry - sig.entry
             f = filters.get(sym) or SymbolFilters(sym, 0.0001, 0.001, 0.001, 5.0)
+            risk_cfg = cfg.risk
+            if learner:
+                mult, _why = learner.risk_multiplier(sym, sig.meta, equity)
+                if mult != 1.0:
+                    risk_cfg = replace(risk_cfg,
+                                       risk_per_trade_pct=risk_cfg.risk_per_trade_pct * mult)
             sizing = size_position(equity, equity, entry, sig.stop + drift, f,
-                                   cfg.risk, cfg.account.leverage)
+                                   risk_cfg, cfg.account.leverage)
             if not sizing.ok:
                 continue
             fee = entry * sizing.qty * e.taker_fee
@@ -409,7 +421,7 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
                 stop=sig.stop + drift, tp1=sig.tp1 + drift, tp2=sig.tp2 + drift,
                 initial_risk_per_unit=abs(entry - (sig.stop + drift)), opened_at=ts,
                 leverage=sizing.leverage, initial_qty=sizing.qty, fees_paid=fee,
-                entry_reason=sig.reason,
+                entry_reason=sig.reason, context=dict(sig.meta),
             )
             guard.record_open(ts)
 
@@ -446,14 +458,20 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
                     pos.fees_paid += fee
                     risk_total = pos.initial_risk_per_unit * pos.initial_qty
                     net = pos.realized_pnl - pos.fees_paid
-                    res.trades.append(Trade(
+                    trade = Trade(
                         symbol=sym, side=pos.side, qty=pos.initial_qty,
                         entry_price=pos.entry_price, exit_price=px, opened_at=pos.opened_at,
                         closed_at=ts, pnl=net, fees=pos.fees_paid,
                         r_multiple=(net / risk_total) if risk_total > 0 else 0.0,
                         exit_reason=act["reason"], entry_reason=pos.entry_reason,
-                    ))
+                        context=dict(pos.context),
+                    )
+                    res.trades.append(trade)
                     guard.record_close(ts, net)
+                    if learner:
+                        learner.record_trade(trade, ts)
+                        if act["reason"] == "stop":
+                            _measure_stop_hunt(learner, cfg, data[sym], i, pos, ts)
                     del positions[sym]
                     break
 
@@ -475,7 +493,13 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
                     if i is None or i < warm or i >= len(data[sym]) - 1:
                         continue
                     sig = strat.evaluate(sym, data[sym], feats[sym], index=i)
-                    if sig and validate_signal_quality(sig, cfg)[0]:
+                    if not sig:
+                        continue
+                    if learner:
+                        if not learner.allow_entry(sym, sig.meta, ts)[0]:
+                            continue
+                        _apply_learned_stop(learner, cfg, sig, sym)
+                    if validate_signal_quality(sig, cfg)[0]:
                         candidates.append((sig.meta.get("adx", 0.0), sig.reward_risk, sym, sig))
                 candidates.sort(key=lambda c: (-c[0], -c[1], c[2]))
                 free = cfg.risk.max_concurrent_positions - len(positions) - len(pending)
@@ -491,6 +515,42 @@ def run_portfolio_backtest(cfg: Config, data: Dict[str, Sequence[Candle]],
             if i is not None:
                 mtm += pos.unrealized(data[sym][i].close)
         res.equity_curve.append((ts, mtm))
+        if learner:
+            learner.record_equity(mtm)
 
     res.end_equity = equity
     return res
+
+
+def _apply_learned_stop(learner: Learner, cfg: Config, sig, symbol: str) -> None:
+    """Ogrenilmis stop carpani, R katlari korunarak uygulanir."""
+    mult = learner.stop_multiplier(symbol)
+    if mult == 1.0:
+        return
+    d = abs(sig.entry - sig.stop) * mult
+    c = cfg.strategy
+    if sig.side == LONG:
+        sig.stop, sig.tp1, sig.tp2 = (sig.entry - d, sig.entry + c.tp1_r * d,
+                                      sig.entry + c.tp2_r * d)
+    else:
+        sig.stop, sig.tp1, sig.tp2 = (sig.entry + d, sig.entry - c.tp1_r * d,
+                                      sig.entry - c.tp2_r * d)
+
+
+def _measure_stop_hunt(learner: Learner, cfg: Config, candles: Sequence[Candle],
+                       i: int, pos: Position, ts: int) -> None:
+    """Stop sonrasi N mumda fiyat orijinal hedefe ulasti mi?
+
+    Bu bir KARAR degil, olcumdur: sonuc yalnizca gelecekteki stop
+    genisligini kalibre eder, o anki islemi etkilemez. Bu yuzden ileriye
+    bakmak burada mesru (backtest'te de canlida da ayni sey olculur).
+    """
+    look = cfg.learning.stop_hunt_lookback_bars
+    d = abs(pos.entry_price - pos.stop)
+    target = (pos.entry_price + cfg.strategy.tp1_r * d if pos.side == LONG
+              else pos.entry_price - cfg.strategy.tp1_r * d)
+    window = candles[i + 1: i + 1 + look]
+    hit = (any(c.high >= target for c in window) if pos.side == LONG
+           else any(c.low <= target for c in window))
+    if hit:
+        learner.note_stop_hunt(pos.symbol, ts)

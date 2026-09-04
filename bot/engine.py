@@ -9,12 +9,14 @@ from __future__ import annotations
 import logging
 import signal as os_signal
 import time
+from dataclasses import replace
 from typing import Dict, List, Optional
 
 from .config import Config
 from .exchange.base import Broker, MarketData
 from .exchange.live import LiveBroker
 from .exchange.paper import PaperBroker
+from .learning import Learner
 from .models import LONG, Candle, Position, Trade
 from .notify import Notifier
 from .risk import RiskGuard, size_position, validate_signal_quality
@@ -35,8 +37,11 @@ class TradingEngine:
         self.store = store
         self.strategy: TrendPullbackStrategy = build_strategy(cfg.strategy)
         self.guard = RiskGuard(cfg, store.load_risk_state())
+        self.learner = Learner(cfg, store)
         self.notifier = Notifier()
         self._last_bar: Dict[str, int] = {}
+        # Stop yiyen islemler: fiyat sonradan hedefe giderse "stop avlanmasi"
+        self._hunt_watch: Dict[str, dict] = {}
         self._running = True
 
     # ------------------------------------------------------------ yasam dongusu
@@ -73,6 +78,7 @@ class TradingEngine:
         equity = self.broker.equity()
         self.store.record_equity(equity, now)
         self.guard.roll_day(now, equity)
+        self.learner.record_equity(equity)
 
         if isinstance(self.broker, LiveBroker):
             for trade in self.broker.reconcile():
@@ -95,6 +101,8 @@ class TradingEngine:
         feats = Features(closed, self.cfg.strategy)
         last = closed[-1]
 
+        self._check_stop_hunt(symbol, closed, now)
+
         pos = self.broker.positions().get(symbol)
         if pos:
             self._manage(pos, last, feats, now)
@@ -114,6 +122,15 @@ class TradingEngine:
             return
         self._last_bar[symbol] = last.open_time
 
+        # --- Ogrenme kapisi: kanitlanmis negatif kova / tekrarlayan hata ---
+        learn_ok, learn_why = self.learner.allow_entry(symbol, sig.meta, now)
+        if not learn_ok:
+            log.info("%s ogrenme kapisi: %s", symbol, learn_why)
+            return
+
+        # --- Ogrenilmis stop genisletmesi (R katlari korunur) ---
+        self._apply_learned_stop(sig, symbol)
+
         ok, reason = validate_signal_quality(sig, self.cfg)
         if not ok:
             log.info("%s sinyal elendi: %s", symbol, reason)
@@ -122,21 +139,45 @@ class TradingEngine:
             return
 
         filters = self.market.filters(symbol)
+        risk_cfg = self.cfg.risk
+        mult, mult_why = self.learner.risk_multiplier(symbol, sig.meta, equity)
+        if mult != 1.0:
+            risk_cfg = replace(risk_cfg,
+                               risk_per_trade_pct=risk_cfg.risk_per_trade_pct * mult)
+            log.info("%s risk carpani %.2f (%s)", symbol, mult, mult_why)
+
         sizing = size_position(
             equity=equity, free_margin=self.broker.free_margin(),
             entry=sig.entry, stop=sig.stop, filters=filters,
-            risk_cfg=self.cfg.risk, desired_leverage=self.cfg.account.leverage,
+            risk_cfg=risk_cfg, desired_leverage=self.cfg.account.leverage,
         )
         if not sizing.ok:
             log.info("%s pozisyon acilmadi: %s", symbol, sizing.reason)
+            if "minimum emir" in sizing.reason:
+                lesson = self.learner.record_mistake(
+                    symbol, "min_notional", sizing.reason, now)
+                if lesson:
+                    log.warning(lesson)
+                    self.notifier.send("DERS: " + lesson)
+                self.learner.save()
             return
 
         log.info("%s SINYAL %s | giris=%.4f stop=%.4f tp1=%.4f tp2=%.4f | R:R=%.2f | %s | %s",
                  symbol, sig.side, sig.entry, sig.stop, sig.tp1, sig.tp2,
                  sig.reward_risk, sizing.reason, sig.meta)
 
-        opened = self.broker.open_position(sig, sizing.qty, sizing.leverage)
+        try:
+            opened = self.broker.open_position(sig, sizing.qty, sizing.leverage)
+        except Exception as exc:
+            lesson = self.learner.record_mistake(symbol, "emir_reddi", str(exc)[:120], now)
+            self.learner.save()
+            if lesson:
+                log.warning(lesson)
+                self.notifier.send("DERS: " + lesson)
+            raise
         if opened:
+            opened.context = dict(sig.meta)
+            self.store.save_position(opened)
             self.guard.record_open(now)
             self.store.save_risk_state(self.guard.state)
             self.notifier.send(
@@ -191,9 +232,65 @@ class TradingEngine:
             if trade:
                 self._on_trade_closed(trade, now)
 
+    def _apply_learned_stop(self, sig, symbol: str) -> None:
+        """Ogrenilmis stop carpanini uygular, R katlarini korur.
+
+        Stop genisledikce hedefler de ayni R oraninda uzar. Aksi halde
+        stop'u genisletmek R:R'yi sessizce bozar -- yani bir sorunu
+        cozerken digerini yaratir.
+        """
+        mult = self.learner.stop_multiplier(symbol)
+        if mult == 1.0:
+            return
+        d = abs(sig.entry - sig.stop) * mult
+        c = self.cfg.strategy
+        if sig.side == LONG:
+            sig.stop, sig.tp1, sig.tp2 = (sig.entry - d, sig.entry + c.tp1_r * d,
+                                          sig.entry + c.tp2_r * d)
+        else:
+            sig.stop, sig.tp1, sig.tp2 = (sig.entry + d, sig.entry - c.tp1_r * d,
+                                          sig.entry - c.tp2_r * d)
+        sig.meta["stop_widen"] = mult
+        log.info("%s ogrenilmis stop carpani %.2fx uygulandi", symbol, mult)
+
+    def _check_stop_hunt(self, symbol: str, candles, now: int) -> None:
+        """Stop yedikten sonra fiyat hedefe gitti mi?
+
+        Karar aninda degil, olaydan SONRA olculur -- lookahead degil,
+        geriye donuk hata analizi. Yon dogru + stop cok dar kombinasyonu
+        tekrar ediyorsa stop mesafesi ogrenilerek genisletilir.
+        """
+        watch = self._hunt_watch.get(symbol)
+        if not watch:
+            return
+        bar_ms = TF_MS[self.cfg.timeframe]
+        bars_passed = (now - watch["since"]) / bar_ms
+        recent = [c for c in candles if c.open_time > watch["since"]]
+        hit = any(c.high >= watch["target"] for c in recent) if watch["side"] == LONG \
+            else any(c.low <= watch["target"] for c in recent)
+        if hit:
+            for lesson in self.learner.note_stop_hunt(symbol, now):
+                log.warning(lesson)
+                self.notifier.send("DERS: " + lesson)
+            self.learner.save()
+            del self._hunt_watch[symbol]
+        elif bars_passed > self.cfg.learning.stop_hunt_lookback_bars:
+            del self._hunt_watch[symbol]   # sure doldu, stop hakliydi
+
     def _on_trade_closed(self, trade: Trade, now: int) -> None:
         self.guard.record_close(now, trade.pnl)
         self.store.save_risk_state(self.guard.state)
+        for lesson in self.learner.record_trade(trade, now):
+            self.notifier.send("DERS: " + lesson)
+        if trade.exit_reason == "stop" and self.cfg.learning.stop_calibration:
+            # orijinal hedef: giris + tp1_r * ilk stop mesafesi
+            d = abs(trade.entry_price - trade.exit_price)
+            target = (trade.entry_price + self.cfg.strategy.tp1_r * d
+                      if trade.side == LONG
+                      else trade.entry_price - self.cfg.strategy.tp1_r * d)
+            self._hunt_watch[trade.symbol] = {
+                "since": now, "target": target, "side": trade.side}
+        self.learner.save()
         s = self.guard.state
         log.info("KAPANDI %s %s pnl=%.2f (%.2fR) | gun: %.2f USDT / %d islem",
                  trade.side, trade.symbol, trade.pnl, trade.r_multiple,

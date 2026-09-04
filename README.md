@@ -155,6 +155,142 @@ piyasasinda (altcoinlerde -%90) pozitif kalabilmesi.
 
 ---
 
+---
+
+## Ogrenme katmani: "hatalarindan ders cikaran bot"
+
+### Once tuzagi soyleyelim
+
+Naif versiyon -- her zarardan sonra parametre ayarlamak -- calisan bir sistemi
+bozmanin en guvenilir yoludur. Sayilarla:
+
+```
+islem basi beklenti  = +0.11R
+islem basi std sapma = ~1.3R
+10 islemlik serinin standart hatasi = 1.3/sqrt(10) = 0.41R
+```
+
+Yani 10 islemin ortalamasi, gercek beklentinin 4 katı kadar sapabilir.
+**Kisa serilerde ogrenilecek hicbir sey yoktur** -- sadece gurultu vardir.
+
+Bu bos bir uyari degil, olculdu. Esikleri 5 isleme dusurup Bayesci onseli
+kaldirinca (yani "hizli ogrenen" bot):
+
+| | islem | CAGR | beklenti | t |
+|---|---|---|---|---|
+| ogrenme kapali | 935 | +11.8% | +0.088R | 2.15 |
+| **naif ogrenme (5 islem esigi, onselsiz)** | 766 | **+4.9%** | **+0.041R** | **0.93** |
+
+Beklenti yariya indi, istatistiksel anlamlilik yok oldu. "Daha hizli ogrenen"
+bot, edge'ini yiyen bottur.
+
+### Bu yuzden ogrenme asimetrik
+
+| Hiz | Ne ogrenilir | Kac ornek gerekir |
+|-----|--------------|-------------------|
+| **Hizli** | emir reddi, min notional yetersizligi, marj hatasi, koruma emri kurulamamasi | 3 tekrar |
+| **Yavas** | bir sembolun/rejimin beklentisinin negatif olmasi, stop mesafesinin dar olmasi | 30+ islem **ve** %99 anlamlilik |
+| **Hicbir zaman** | "son 3 islem zarardi, stratejiyi degistir" | -- bu ogrenme degil, panik |
+
+Operasyonel hatalar deterministiktir: min notional yetmiyorsa yetmiyordur,
+istatistik gerekmez. Strateji performansi ise stokastiktir; orada acele
+etmek ogrenme degil, gurultuye uyum saglamaktir.
+
+### Ne ogreniyor
+
+**1. Stop kalibrasyonu (olculen tek net kazanc)**
+Stop yedikten sonra fiyat 12 mum icinde orijinal hedefe ulastiysa bu bir
+*stop avlanmasidir*: yon dogruydu, stop cok dardi. Zararli cikislarin %45'inden
+fazlasi boyleyse stop mesafesi kademeli genisletilir (tavan 1.5x), R katlari
+korunarak. Backtest'te 15 sembolun 7'sinde tetiklendi.
+
+**2. Kova banklama (kanit gerektiren)**
+Bir sembol veya rejim kovasinin beklentisi *kanitlanmis* sekilde negatifse
+14 gun devre disi kalir, sonra kucuk pozisyonla gozetim altinda doner.
+Ortalamanin negatif olmasi yetmez -- ust guven sinirinin de sifirin altinda
+olmasi gerekir.
+
+**3. Bayesci kucultme**
+Canli beklenti tahmini, backtest beklentisine (onsel) cekilir. Onsele
+40 islemlik guven verilir; yani 3 kotu islem tahmini devirmez.
+
+**4. Hata defteri**
+Ayni operasyonel hata 3 kez tekrarlanirsa sembol 7 gun devre disi kalir.
+Ceza bitince **sayac sifirlanir** -- yoksa gecici bir sorun kalici yasaga
+donusurdu.
+
+**5. Dusus olcegi (varsayilan KAPALI)**
+Zararda pozisyon boyutunu kucultur. Olculdu: ~3 puan CAGR maliyetine ~4 puan
+dusus azaltiyor, yani risk-getiri oranini iyilestirmiyor. Sermaye korumasini
+getiriye tercih ediyorsan `drawdown_scaling: true` yap.
+
+### Onemli tasarim karari: ogrenme riski ASLA artiramaz
+
+`max_risk_multiplier: 1.0`. Bot iyi giden bir seride pozisyonlari buyutemez.
+Bu tek yonlu emniyet kasten: yanlis ogrenmenin maliyeti simetrik degil.
+Kaciralan kar geri gelir, buyutulmus zarar gelmez.
+
+### Yanlis alarm sorunu ve nasil olculup duzeltildi
+
+Ilk kurulum her islemden sonra test yapiyordu, esik tek yonlu %95 (z=1.64).
+Demo verisinde **gercekten pozitif beklentili** bir sembol banklandi. Sebep
+istatistiksel: her islemde test etmek nominal hatayi asar (optional stopping /
+coklu karsilastirma).
+
+Simulasyonla olculdu (200 islem, 3000 tekrar, gercek beklenti +0.11R):
+
+| z | test sikligi | yanlis bank | -0.3R yakalama | -0.6R yakalama |
+|---|--------------|-------------|----------------|----------------|
+| 1.64 | her islem | 6.1% | 98.1% | 100% |
+| **2.33** | **her 10 islem** | **0.7%** | **88.9%** | **100%** |
+| 2.58 | her 10 islem | 0.2% | 82.9% | 100% |
+| 3.09 | her 10 islem | 0.1% | 65.6% | 100% |
+
+Secilen ayar yanlis alarmi 9 kat azaltirken gercekten bozuk bir sembolu
+hala %100 yakaliyor. Duzeltmeden once ogrenme risk-getiri oranini
+kotulestiriyordu; sonra iyilestirdi.
+
+### Olculen etki (portfoy backtesti, 15 sembol, 5 yil)
+
+| | islem | CAGR | maks dusus | CAGR/dusus | beklenti |
+|---|---|---|---|---|---|
+| ogrenme kapali | 935 | +11.8% | 21.7% | 0.54 | +0.088R |
+| **ogrenme acik (sevk edilen)** | 907 | +10.9% | **18.6%** | **0.59** | +0.091R |
+| + dusus olcegi de acik | 905 | +9.2% | 18.7% | 0.49 | +0.088R |
+
+5 yilda **sifir yanlis bank**, 7 sembolde stop genisletmesi.
+
+**Durustce:** beklenti farki (+0.088 vs +0.091) gurultu icinde -- 900 islemde
+standart hata ~0.043R, fark bunun onda biri. Anlamli olan dusus azalmasi
+(21.7% -> 18.6%), o da stop genisletmesinden geliyor. Yani ogrenme katmani
+mucize yaratmiyor; **zarar vermiyor ve bir failure mode'u (cok dar stop)
+sistematik olarak duzeltiyor.** Asil degeri backtest'in gosteremedigi seyde:
+gercekten bozulan bir sembolu/rejimi zamaninda kenara koymak.
+
+### Ne ogrendigini gormek
+
+```bash
+python -m bot --config config.yaml learn
+```
+
+```
+Ogrenme: AKTIF
+Toplam islem: 62 | zirve equity: 241.30
+Canli beklenti: +0.074R  (+/- 0.312 95% guven)
+Kucultulmus tahmin: +0.096R (onsel +0.110R)
+
+Kovalar:
+  kova                            n    ort R  ust sinir  durum
+  sym:ETHUSDT                    18   -0.204        inf  veri yetersiz (12 eksik)
+  reg:adx_dusuk|vol_yuksek       31   -0.118     +0.240  aktif
+  sym:BTCUSDT                    22   +0.310        inf  veri yetersiz (8 eksik)
+```
+
+Kara kutu yok: hangi kovada kac ornek var, ust guven siniri nerede, neden
+karar alinmadi -- hepsi gorunur.
+
+---
+
 ## Kurulum
 
 ```bash
@@ -212,6 +348,8 @@ Paper'da kar etmeyen bir kurulum canlida asla kar etmez.
 | Mutabakat | Her dongude borsadaki gercek pozisyonla yerel kayit karsilastirilir |
 | Kalici durum | SQLite: limitler ve acik pozisyon restart'ta kaybolmaz |
 | Config dogrulama | Sinir disi ayar uyari degil **hata** verir, bot baslamaz |
+| Ogrenme tek yonlu | Ogrenme riski asla artiramaz (`max_risk_multiplier: 1.0`) |
+| Hata defteri | Tekrarlayan operasyonel hata sembolu gecici devre disi birakir |
 
 Bot **kendisine ait olmayan** acik pozisyonlara dokunmaz.
 
@@ -227,6 +365,7 @@ bot/
   risk.py         pozisyon boyutu, gunluk limitler, soguma
   backtest.py     tek sembol + portfoy backtesti
   engine.py       canli/paper dongu (broker arayuzune karsi calisir)
+  learning.py     ogrenme katmani (istatistiksel kapilar + hata defteri)
   state.py        SQLite kalici durum
   archive.py      data.binance.vision gecmis veri
   exchange/
@@ -255,12 +394,17 @@ sinyali. Cikis: %50'si 1R'de (islem bedava hale gelir), kalani 4R'de veya
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest tests/ -q      # 89 test
+python -m pytest tests/ -q      # 117 test
 ```
 
 Testler sadece "calisiyor mu"yu degil, **kaybetmeyi reddediyor mu**yu de
 kontrol eder: lookahead yok mu, ayni mumda stop hedeften once mi geliyor,
 gunluk limit gercekten duruyor mu, kaldirac riski degistirmiyor mu.
+
+Ogrenme katmaninda en kritik testler "ogreniyor mu" degil **erken ogrenmiyor
+mu**: 29 ardisik zarar bile esigin altindaysa karar aldirmamali, yuksek
+varyansli zarar serisi bank tetiklememeli, yanlis bank orani simulasyonla
+%3'un altinda kalmali.
 
 ## Bilinen sinirlar
 

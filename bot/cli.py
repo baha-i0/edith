@@ -224,6 +224,39 @@ def cmd_status(args) -> int:
     return 0
 
 
+# --------------------------------------------------------------------- learn
+def cmd_learn(args) -> int:
+    """Botun neyi ogrendigini gosterir. Kara kutu birakmanin anlami yok."""
+    cfg = _load(args)
+    from .learning import Learner
+
+    store = Store(cfg.state_path, mode=args.mode or cfg.mode)
+    learner = Learner(cfg, store)
+    print(learner.report())
+    print()
+    lc = cfg.learning
+    conf = {1.64: 95, 2.33: 99, 2.58: 99.5, 3.09: 99.9}.get(round(lc.significance_z, 2))
+    conf_txt = f"%{conf}" if conf else f"z={lc.significance_z}"
+    print("Nasil okunur:")
+    print(f"  - 'ust sinir' ortalamanin tek yonlu {conf_txt} ust guven siniri.")
+    print("    Sifirin ALTINDA ise beklentinin negatif oldugu kanitlanmis demektir.")
+    print("    Ortalamanin negatif olmasi TEK BASINA yeterli degil -- kucuk")
+    print("    orneklerde ortalama surekli isaret degistirir.")
+    print(f"  - {lc.min_trades_per_bucket} islemin altindaki kovalardan hicbir sonuc")
+    print(f"    cikarilmaz, bilerek. Test her {lc.bench_eval_every} islemde bir yapilir")
+    print("    (her islemde test etmek yanlis alarm oranini sisirir).")
+    print(f"  - Ogrenme riski artiramaz: risk carpani tavani "
+          f"{lc.max_risk_multiplier:.2f}x.")
+    if args.reset:
+        confirm = input("\nTum ogrenilenleri silmek icin 'SIFIRLA' yaz: ").strip()
+        if confirm == "SIFIRLA":
+            store.delete_kv(f"learning:{store.mode}")
+            print("Ogrenme durumu sifirlandi.")
+        else:
+            print("Iptal edildi.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="bot", description="Binance Futures trading bot")
     p.add_argument("--config", default="config.yaml")
@@ -253,6 +286,12 @@ def build_parser() -> argparse.ArgumentParser:
         r.add_argument("--symbol")
         r.add_argument("--timeframe")
         r.set_defaults(func=lambda a, m=mode: cmd_run(a, m))
+
+    l = sub.add_parser("learn", help="botun ogrendiklerini goster")
+    l.add_argument("--mode", help="paper/testnet/live")
+    l.add_argument("--symbol")
+    l.add_argument("--reset", action="store_true", help="ogrenme durumunu sifirla")
+    l.set_defaults(func=cmd_learn)
 
     s = sub.add_parser("status", help="kayitli istatistikler")
     s.add_argument("--mode", help="paper/testnet/live")

@@ -96,3 +96,66 @@ execution:
   recv_window: 5000
   request_timeout: 10
   max_retries: 4
+
+# ============================================================================
+# OGRENME KATMANI
+# ============================================================================
+# Onemli: "ogrenen bot" fikri, yanlis kurulursa calisan bir sistemi bozmanin
+# en guvenilir yoludur. Islem basi beklenti +0.11R, standart sapma ~1.3R.
+# 10 islemlik bir serinin standart hatasi 0.41R -- yani gercek beklentinin
+# 4 kati. Kisa serilerde OGRENILECEK HICBIR SEY YOKTUR.
+#
+# Olculdu (portfoy backtesti, 5 yil): esikleri 5 isleme dusurup onseli
+# kaldirinca beklenti +0.088R'den +0.041R'ye dustu, t 2.15'ten 0.93'e indi.
+# Yani "daha hizli ogrenen" bot, edge'ini yiyen bottur.
+#
+# Bu yuzden ogrenme burada asimetrik:
+#   HIZLI (deterministik) : emir reddi, min notional, marj hatasi -> 3 tekrar
+#   YAVAS (istatistiksel) : kova beklentisi, stop genisligi -> 30+ islem + %95
+#   HIC                   : "son 3 islem zarardi, strateji degistir"
+learning:
+  enabled: true
+
+  # --- yavas ogrenme (istatistiksel kapilar) ---
+  min_trades_per_bucket: 30    # bu sayinin altinda hicbir karar alinmaz
+  min_trades_for_sizing: 40    # risk carpani icin daha da fazlasi gerekir
+  # Bir kovayi banklamak icin ortalamanin negatif olmasi YETMEZ; ust guven
+  # sinirinin de sifirin altinda olmasi gerekir.
+  # z neden 2.33 (tek yonlu %99), 1.64 (%95) degil: her islemden sonra test
+  # etmek nominal hatayi asar. Simulasyon (200 islem, 3000 tekrar, gercek
+  # beklenti +0.11R olan bir sembolde YANLIS bank orani):
+  #   z=1.64, her islem     -> %6.1     z=2.33, her 10 islem -> %0.7
+  #   z=3.09, her 10 islem  -> %0.1 ama -0.3R yakalama gucu %98'den %66'ya duser
+  # Secilen ayar: yanlis alarm 9 kat azaliyor, gercekten bozuk sembol (-0.6R)
+  # hala %100 yakalaniyor.
+  significance_z: 2.33
+  bench_eval_every: 10         # bank testi her 10 islemde bir
+  prior_expectancy_r: 0.11     # backtest beklentisi = onsel inanc
+  prior_strength: 40           # onsele 40 islemlik guven verilir (Bayesci kucultme)
+  trade_r_sd: 1.3
+  bench_days: 14               # kanitlanmis negatif kova kac gun disarida kalir
+  probation_multiplier: 0.6    # banktan donen kova kucuk pozisyonla baslar
+
+  # --- risk olcegi ---
+  max_risk_multiplier: 1.0     # 1.0 = ogrenme riski ASLA ARTIRAMAZ (tek yonlu emniyet)
+  min_risk_multiplier: 0.6
+  # Olculdu: ~3 puan CAGR maliyetine ~4 puan dusus azaltiyor. Risk-getiri
+  # oranini iyilestirmiyor, sadece olcegi kucultuyor. Sermaye korumasini
+  # getiriye tercih ediyorsan true yap.
+  drawdown_scaling: false
+  drawdown_full_cut_pct: 25
+
+  # --- stop kalibrasyonu: olculen tek net kazanc ---
+  # Stop yedikten sonra fiyat N mum icinde orijinal hedefe ulastiysa bu bir
+  # "stop avlanmasi": yon dogruydu, stop cok dardi. Oran esigi asinca stop
+  # mesafesi ogrenilerek genisletilir, R katlari korunarak.
+  stop_calibration: true
+  stop_hunt_lookback_bars: 12
+  stop_hunt_rate_threshold: 0.45
+  stop_widen_step: 0.15
+  stop_widen_max: 1.5
+
+  # --- hizli ogrenme (operasyonel hatalar) ---
+  # Bunlar sans degil kural: min notional yetmiyorsa yetmiyordur.
+  mistake_repeat_threshold: 3
+  mistake_block_days: 7

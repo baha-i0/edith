@@ -101,6 +101,7 @@ class Position:
     breakeven_moved: bool = False
     entry_reason: str = ""
     client_id: str = ""
+    context: Dict[str, float] = field(default_factory=dict)
 
     @property
     def direction(self) -> int:
@@ -135,6 +136,10 @@ class Trade:
     r_multiple: float
     exit_reason: str
     entry_reason: str = ""
+    # Ogrenme katmani icin baglam: hangi kosullarda acildi, cikistan sonra
+    # fiyat nereye gitti. Bu alan olmadan "hatadan ders cikarmak" mumkun degil --
+    # sadece PnL'e bakip parametre oynatmak gurultuye uyum saglamaktir.
+    context: Dict[str, float] = field(default_factory=dict)
 
     @property
     def net_pnl(self) -> float:
