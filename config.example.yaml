@@ -159,3 +159,30 @@ learning:
   # Bunlar sans degil kural: min notional yetmiyorsa yetmiyordur.
   mistake_repeat_threshold: 3
   mistake_block_days: 7
+
+# ============================================================================
+# KENDINI DENETLEME
+# ============================================================================
+# Botu calistiran kisinin istatistik bilmesi gerekmiyor; ama birinin su
+# soruyu cevaplamasi gerekiyor: "su an her sey yolunda mi?"
+#   python -m bot doctor
+#
+# Tek yonlu kural: kanit stratejinin bozuldugunu gosterirse bot yeni pozisyon
+# acmayi DURDURUR ve haber verir. Parametrelerini kendiliginden degistirmez.
+# Kendini yeniden optimize eden bir sistem bozuldugunu asla soylemez, cunku
+# her seferinde gecmise uyan yeni bir parametre bulur.
+health:
+  enabled: true
+  check_every_minutes: 60
+
+  # Edge oldu mu kontrolu. 50 islem + %99 anlamlilik gerekiyor: amac kotu bir
+  # aya tepki vermek DEGIL, edge'in gercekten bittigini yakalamak.
+  # 12 ardisik zarar bu kontrolu tetiklemez -- tetiklememesi gerekir.
+  min_trades_for_edge_check: 50
+  edge_z: 2.33
+  halt_on_dead_edge: true
+
+  drawdown_warn_pct: 15      # backtest'te en kotu dusus %21 idi, bu NORMAL
+  drawdown_critical_pct: 22
+  fee_drag_warn_pct: 40      # brut karin %40'indan fazlasi komisyona gidiyorsa
+  notify_on_warn: false      # sadece 'mudahale' seviyesi bildirim gonderir

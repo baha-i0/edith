@@ -291,6 +291,65 @@ karar alinmadi -- hepsi gorunur.
 
 ---
 
+## Kendini denetleme: "her sey yolunda mi?"
+
+Botu calistiran kisinin istatistik bilmesi gerekmiyor. Tek komut:
+
+```bash
+python -m bot doctor
+```
+
+Uc cevaptan biri gelir, hepsi duz Turkce:
+
+| Cikti | Ne yapilacak |
+|---|---|
+| `HER SEY YOLUNDA` | Hicbir sey |
+| `DIKKAT` | Yine hicbir sey, sadece haberin olsun |
+| `MUDAHALE GEREKIYOR` | Ekrandaki `YAP:` satirini uygula |
+
+Ornek -- strateji gercekten bozuldugunda:
+
+```
+================================================================
+MUDAHALE GEREKIYOR - asagidaki adimi at
+================================================================
+
+ >>>  Strateji hala calisiyor mu
+        60 islemde ortalama -0.640R ve ust guven siniri -0.482 < 0.
+        Beklentinin negatif oldugu istatistiksel olarak KANITLANDI.
+        Bu kotu bir seri degil, bozulmus bir sistem.
+        YAP: Bot yeni pozisyon acmayi durdurdu. Once paper moda gec,
+             sonra backtest'i guncel veriyle tekrar calistir.
+```
+
+### Tek yonlu kural
+
+Kanit stratejinin bozuldugunu gosterirse bot **yeni pozisyon acmayi durdurur
+ve haber verir.** Parametrelerini kendiliginden degistirmez.
+
+Bu kasitli. Kendini yeniden optimize eden bir sistem **bozuldugunu asla
+soylemez** -- cunku her seferinde gecmise uyan yeni bir parametre bulur.
+Bozulmayi gizlemenin en kolay yolu, surekli yeniden fit etmektir.
+
+Kontroller ve esikleri:
+
+| Kontrol | Ne zaman uyarir | Neden bu esik |
+|---|---|---|
+| Bot calisiyor mu | Son kayit beklenenden eskiyse | surec olmus olabilir |
+| Strateji calisiyor mu | 50+ islem **ve** %99 anlamlilikla negatifse | 12 ardisik zarar bunu tetiklemez, tetiklememeli |
+| Dusus | %15 uyari, %22 mudahale | backtest'te en kotu dusus %21 idi |
+| Komisyon yuku | Brut karin %40'indan fazlasi komisyonsa | cok sik islem isareti |
+| Acik pozisyonlar | Limit asilmis ya da pozisyon takilmissa | borsa-yerel kayit uyusmazligi |
+| Operasyonel hatalar | Tekrarlayan emir/bakiye hatasi varsa | genelde bakiye kucuklugu |
+
+Bot ayrica saatte bir kendi kendine ayni kontrolu yapar; kritik bulguda
+Telegram'dan haber verir (ayni konudan gunde en fazla bir kez -- bildirim
+spami kotu kararlarin kaynagidir).
+
+**Programlama/istatistik bilmiyorsan:** `BASLA.md` dosyasi senin icin yazildi.
+
+---
+
 ## Kurulum
 
 ```bash
@@ -349,6 +408,7 @@ Paper'da kar etmeyen bir kurulum canlida asla kar etmez.
 | Kalici durum | SQLite: limitler ve acik pozisyon restart'ta kaybolmaz |
 | Config dogrulama | Sinir disi ayar uyari degil **hata** verir, bot baslamaz |
 | Ogrenme tek yonlu | Ogrenme riski asla artiramaz (`max_risk_multiplier: 1.0`) |
+| Kendini denetleme | Edge'in oldugu KANITLANIRSA bot durur ve haber verir |
 | Hata defteri | Tekrarlayan operasyonel hata sembolu gecici devre disi birakir |
 
 Bot **kendisine ait olmayan** acik pozisyonlara dokunmaz.
@@ -366,6 +426,7 @@ bot/
   backtest.py     tek sembol + portfoy backtesti
   engine.py       canli/paper dongu (broker arayuzune karsi calisir)
   learning.py     ogrenme katmani (istatistiksel kapilar + hata defteri)
+  health.py       kendini denetleme (bozulunca DUR ve haber ver)
   state.py        SQLite kalici durum
   archive.py      data.binance.vision gecmis veri
   exchange/
@@ -394,7 +455,7 @@ sinyali. Cikis: %50'si 1R'de (islem bedava hale gelir), kalani 4R'de veya
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest tests/ -q      # 117 test
+python -m pytest tests/ -q      # 133 test
 ```
 
 Testler sadece "calisiyor mu"yu degil, **kaybetmeyi reddediyor mu**yu de

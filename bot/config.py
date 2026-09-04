@@ -133,6 +133,27 @@ class LearningConfig:
 
 
 @dataclass
+class HealthConfig:
+    """Kendini denetleme esikleri.
+
+    Buradaki tek yonlu kural onemli: kanit kotuyse bot DURUR, iyi diye
+    kendini buyutmez. Kendini yeniden optimize eden bir sistem bozuldugunu
+    asla soylemez, cunku her seferinde gecmise uyan yeni bir parametre bulur.
+    """
+    enabled: bool = True
+    check_every_minutes: int = 60
+    # Edge oldu mu kontrolu -- esik kasten yuksek, kotu bir aya tepki
+    # vermek icin degil, edge'in gercekten bittigini yakalamak icin.
+    min_trades_for_edge_check: int = 50
+    edge_z: float = 2.33
+    halt_on_dead_edge: bool = True
+    drawdown_warn_pct: float = 15.0
+    drawdown_critical_pct: float = 22.0
+    fee_drag_warn_pct: float = 40.0
+    notify_on_warn: bool = False   # sadece 'mudahale' seviyesi bildirim gonderir
+
+
+@dataclass
 class Config:
     mode: str = "paper"
     symbols: List[str] = field(default_factory=lambda: ["BNBUSDT"])
@@ -145,6 +166,7 @@ class Config:
     strategy: StrategyConfig = field(default_factory=StrategyConfig)
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     learning: LearningConfig = field(default_factory=LearningConfig)
+    health: HealthConfig = field(default_factory=HealthConfig)
 
     # ---- API kimlik bilgileri sadece ortam degiskeninden okunur ----
     @property
@@ -217,6 +239,18 @@ class Config:
         if e.max_spread_bps <= 0:
             errs.append("max_spread_bps > 0 olmali")
 
+        h = self.health
+        if h.enabled:
+            if h.min_trades_for_edge_check < 30:
+                errs.append("health.min_trades_for_edge_check >= 30 olmali "
+                            "(daha azi kotu bir seriye tepki vermektir)")
+            if h.edge_z < 1.64:
+                errs.append("health.edge_z >= 1.64 olmali")
+            if h.check_every_minutes < 5:
+                errs.append("health.check_every_minutes >= 5 olmali")
+            if not 0 < h.drawdown_warn_pct < h.drawdown_critical_pct:
+                errs.append("0 < drawdown_warn_pct < drawdown_critical_pct olmali")
+
         if lrn.enabled:
             if lrn.min_trades_per_bucket < 20:
                 errs.append("learning.min_trades_per_bucket >= 20 olmali "
@@ -286,6 +320,7 @@ def load_config(path: str | Path) -> Config:
         ("strategy", StrategyConfig),
         ("execution", ExecutionConfig),
         ("learning", LearningConfig),
+        ("health", HealthConfig),
     ):
         nested[key] = _build(cls, raw.pop(key, {}) or {})
 

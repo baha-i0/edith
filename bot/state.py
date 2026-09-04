@@ -120,6 +120,25 @@ class Store:
         )
         self.conn.commit()
 
+    def all_trades(self) -> List[sqlite3.Row]:
+        return self.conn.execute(
+            "SELECT * FROM trades WHERE mode=? ORDER BY closed_at ASC", (self.mode,)
+        ).fetchall()
+
+    def last_equity(self) -> Optional[tuple]:
+        row = self.conn.execute(
+            "SELECT ts, equity FROM equity WHERE mode=? ORDER BY ts DESC LIMIT 1",
+            (self.mode,),
+        ).fetchone()
+        return (row["ts"], row["equity"]) if row else None
+
+    def equity_series(self, limit: int = 5000) -> List[tuple]:
+        rows = self.conn.execute(
+            "SELECT ts, equity FROM equity WHERE mode=? ORDER BY ts DESC LIMIT ?",
+            (self.mode, limit),
+        ).fetchall()
+        return [(r["ts"], r["equity"]) for r in reversed(rows)]
+
     def recent_trades(self, limit: int = 20) -> List[sqlite3.Row]:
         return self.conn.execute(
             "SELECT * FROM trades WHERE mode=? ORDER BY closed_at DESC LIMIT ?",

@@ -224,6 +224,38 @@ def cmd_status(args) -> int:
     return 0
 
 
+# -------------------------------------------------------------------- doctor
+def cmd_doctor(args) -> int:
+    """'Her sey yolunda mi?' -- duz Turkce cevap, istatistik bilmek gerekmez."""
+    cfg = _load(args)
+    from .health import CRITICAL, WARN, run_health_checks
+    from .learning import Learner
+
+    store = Store(cfg.state_path, mode=args.mode or cfg.mode)
+    learner = Learner(cfg, store)
+    rep = run_health_checks(cfg, store, learner)
+    print(rep.render())
+
+    if rep.halt_required:
+        print("!" * 64)
+        print("BOT YENI POZISYON ACMAYI DURDURDU.")
+        print("Sebep:", rep.halt_reason)
+        print()
+        print("Bu bir hata degil, tasarim. Kanit stratejinin bozuldugunu")
+        print("gosterdiginde dogru davranis kendini yeniden ayarlamak degil,")
+        print("durup sana haber vermektir. Kendini optimize eden bir sistem")
+        print("bozuldugunu asla soylemez.")
+        print("!" * 64)
+
+    if args.acknowledge:
+        rs = store.load_risk_state()
+        rs.halted = False
+        rs.halt_reason = ""
+        store.save_risk_state(rs)
+        print("\nDurdurma kaldirildi. Bot bir sonraki dongude tekrar islem acabilir.")
+    return {"bilgi": 0, "dikkat": 0, "mudahale": 1}[rep.worst]
+
+
 # --------------------------------------------------------------------- learn
 def cmd_learn(args) -> int:
     """Botun neyi ogrendigini gosterir. Kara kutu birakmanin anlami yok."""
@@ -286,6 +318,13 @@ def build_parser() -> argparse.ArgumentParser:
         r.add_argument("--symbol")
         r.add_argument("--timeframe")
         r.set_defaults(func=lambda a, m=mode: cmd_run(a, m))
+
+    d = sub.add_parser("doctor", help="her sey yolunda mi? (duz Turkce rapor)")
+    d.add_argument("--mode", help="paper/testnet/live")
+    d.add_argument("--symbol")
+    d.add_argument("--acknowledge", action="store_true",
+                   help="durdurmayi kaldir (sorunu gorduğunu onayla)")
+    d.set_defaults(func=cmd_doctor)
 
     l = sub.add_parser("learn", help="botun ogrendiklerini goster")
     l.add_argument("--mode", help="paper/testnet/live")

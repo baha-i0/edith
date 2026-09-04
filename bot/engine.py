@@ -16,6 +16,7 @@ from .config import Config
 from .exchange.base import Broker, MarketData
 from .exchange.live import LiveBroker
 from .exchange.paper import PaperBroker
+from .health import CRITICAL, WARN, run_health_checks
 from .learning import Learner
 from .models import LONG, Candle, Position, Trade
 from .notify import Notifier
@@ -42,6 +43,8 @@ class TradingEngine:
         self._last_bar: Dict[str, int] = {}
         # Stop yiyen islemler: fiyat sonradan hedefe giderse "stop avlanmasi"
         self._hunt_watch: Dict[str, dict] = {}
+        self._last_health_ms = 0
+        self._last_alert: Dict[str, int] = {}
         self._running = True
 
     # ------------------------------------------------------------ yasam dongusu
@@ -89,6 +92,54 @@ class TradingEngine:
                 self.process_symbol(symbol, now, equity)
             except Exception:
                 log.exception("%s islenirken hata", symbol)
+
+        self._maybe_health_check(now)
+
+    def _maybe_health_check(self, now: int) -> None:
+        """Periyodik kendini denetleme.
+
+        Kanit stratejinin bozuldugunu gosterirse bot YENI POZISYON ACMAYI
+        durdurur ve haber verir. Parametreleri kendiliginden degistirmez --
+        bu, bozulmayi gizlemenin en kolay yolu olurdu.
+        """
+        hc = self.cfg.health
+        if not hc.enabled:
+            return
+        if now - self._last_health_ms < hc.check_every_minutes * 60_000:
+            return
+        self._last_health_ms = now
+        try:
+            rep = run_health_checks(self.cfg, self.store, self.learner,
+                                    self.broker, now)
+        except Exception:
+            log.exception("Saglik kontrolu basarisiz")
+            return
+
+        for c in rep.checks:
+            if c.severity == CRITICAL:
+                log.error("SAGLIK [%s] %s | YAP: %s", c.name, c.message, c.action)
+            elif c.severity == WARN:
+                log.warning("SAGLIK [%s] %s", c.name, c.message)
+
+        if rep.halt_required and hc.halt_on_dead_edge and not self.guard.state.halted:
+            self.guard.state.halted = True
+            self.guard.state.halt_reason = "saglik kontrolu: " + rep.halt_reason
+            self.store.save_risk_state(self.guard.state)
+            log.error("BOT DURDURULDU: %s", rep.halt_reason)
+
+        self._alert(rep, now)
+
+    def _alert(self, rep, now: int) -> None:
+        """Bildirim gonderir ama spam yapmaz: ayni uyari gunde bir kez."""
+        levels = [CRITICAL] + ([WARN] if self.cfg.health.notify_on_warn else [])
+        for c in rep.checks:
+            if c.severity not in levels:
+                continue
+            if now - self._last_alert.get(c.name, 0) < 86_400_000:
+                continue
+            self._last_alert[c.name] = now
+            self.notifier.send(f"[{c.severity.upper()}] {c.name}\n{c.message}"
+                               + (f"\n\nYAP: {c.action}" if c.action else ""))
 
     def process_symbol(self, symbol: str, now: int, equity: float) -> None:
         candles = self.market.klines(symbol, self.cfg.timeframe,
