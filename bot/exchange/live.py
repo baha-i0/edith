@@ -395,9 +395,22 @@ class LiveBroker(Broker):
         realized = 0.0
         commission = 0.0
         exit_price = pos.entry_price
+        # 60 sn geriye bakmanin sebebi saat kaymasi: opened_at yerel saatten,
+        # fill zamani borsadan gelir. AMA bu pencere ayni sembolde bir ONCEKI
+        # islemin fill'lerine uzanirsa o islemin PnL'i buraya da yazilir ve
+        # cift sayilir. Onceki kapanis zamaniyla sinirlandiriyoruz.
+        # Sinir BORSANIN fill zamanidir, yerel kapanis saati degil: iki saat
+        # birbirinden kayabilir ve zaten 60 sn'lik pencerenin sebebi bu kayma.
+        son_fill = int((self.store.get_kv("last_fill_ms") or {}).get(pos.symbol, 0))
+        baslangic = max(pos.opened_at - 60_000, son_fill + 1)
+        yeni_son_fill = son_fill
         try:
-            fills = self.client.user_trades(pos.symbol, pos.opened_at - 60_000)
+            fills = self.client.user_trades(pos.symbol, baslangic)
             for t in fills:
+                ts = int(t.get("time", 0))
+                if ts and ts < baslangic:     # sunucu filtreyi uygulamadiysa
+                    continue
+                yeni_son_fill = max(yeni_son_fill, ts)
                 realized += float(t.get("realizedPnl", 0))
                 commission += float(t.get("commission", 0))
                 if float(t.get("realizedPnl", 0)) != 0:
@@ -419,6 +432,10 @@ class LiveBroker(Broker):
         self._positions.pop(pos.symbol, None)
         self.store.clear_position(pos.symbol)
         self.store.record_trade(trade)
+        if yeni_son_fill > son_fill:
+            kayit = self.store.get_kv("last_fill_ms") or {}
+            kayit[pos.symbol] = yeni_son_fill
+            self.store.set_kv("last_fill_ms", kayit)
         try:
             self.client.cancel_all(pos.symbol)  # artik pozisyon yok, artik emir kalmasin
         except BinanceError:
