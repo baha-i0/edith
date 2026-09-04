@@ -117,6 +117,32 @@ class ExecutionConfig:
 
 
 @dataclass
+class DashboardConfig:
+    """Yerel izleme paneli.
+
+    GUVENLIK KARARLARI (gevsetme, sebeplerini oku):
+
+    1. Varsayilan adres 127.0.0.1 -- sadece bu makine. Panel bakiyeni,
+       acik pozisyonlarini ve strateji parametrelerini gosterir. 0.0.0.0
+       demek, ayni agdaki herkese acmak demektir.
+    2. Panel SALT OKUNURDUR. Icinde "pozisyonu kapat" dugmesi yoktur.
+       Sebep: localhost'a baglanan bir HTTP sunucusuna, kullanicinin
+       ziyaret ettigi HERHANGI bir web sitesi istek gonderebilir (CSRF).
+       Kimlik dogrulamasi olmayan bir kontrol ucu, tarayicida acik duran
+       rastgele bir sekmenin pozisyonlarini kapatabilmesi demektir.
+       Kontrol Telegram'da kalir: orada chat_id dogrulamasi var.
+    3. 127.0.0.1 disinda bir adrese baglanmak istiyorsan DASHBOARD_TOKEN
+       ortam degiskeni zorunludur; yoksa bot baslamaz.
+    """
+
+    enabled: bool = True
+    host: str = "127.0.0.1"
+    port: int = 8787
+    refresh_seconds: int = 20
+    max_trades_shown: int = 50
+
+
+@dataclass
 class LearningConfig:
     """Ogrenme katmani ayarlari.
 
@@ -209,6 +235,7 @@ class Config:
     learning: LearningConfig = field(default_factory=LearningConfig)
     health: HealthConfig = field(default_factory=HealthConfig)
     shadow: ShadowConfig = field(default_factory=ShadowConfig)
+    dashboard: DashboardConfig = field(default_factory=DashboardConfig)
 
     # ---- API kimlik bilgileri sadece ortam degiskeninden okunur ----
     @property
@@ -284,6 +311,21 @@ class Config:
             errs.append("execution.post_only_wait_bars >= 1 olmali")
         if e.post_only_fill_margin_bps < 0:
             errs.append("execution.post_only_fill_margin_bps >= 0 olmali")
+
+        d = self.dashboard
+        if d.enabled:
+            if not (1024 <= d.port <= 65535):
+                errs.append("dashboard.port 1024-65535 araliginda olmali")
+            if d.refresh_seconds < 2:
+                errs.append("dashboard.refresh_seconds >= 2 olmali")
+            # Localhost disina acmak bilincli bir karar olmali ve token istemeli.
+            if d.host not in ("127.0.0.1", "localhost", "::1") and \
+                    not os.getenv("DASHBOARD_TOKEN"):
+                errs.append(
+                    f"dashboard.host '{d.host}' localhost disinda. Panel bakiyeni ve "
+                    "pozisyonlarini gosterir; agdaki herkese acmak icin "
+                    "DASHBOARD_TOKEN ortam degiskeni zorunlu."
+                )
         if e.max_spread_bps <= 0:
             errs.append("max_spread_bps > 0 olmali")
 
@@ -377,6 +419,7 @@ def load_config(path: str | Path) -> Config:
         ("learning", LearningConfig),
         ("health", HealthConfig),
         ("shadow", ShadowConfig),
+        ("dashboard", DashboardConfig),
     ):
         nested[key] = _build(cls, raw.pop(key, {}) or {})
 

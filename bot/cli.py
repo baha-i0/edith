@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import time
 import sys
 from pathlib import Path
 
@@ -224,6 +225,50 @@ def cmd_status(args) -> int:
     return 0
 
 
+# ----------------------------------------------------------------- dashboard
+def cmd_dashboard(args) -> int:
+    """Paneli tek basina acar (bot calismiyorken gecmise bakmak icin).
+
+    Bot zaten calisiyorsa panel onun icinde acilir ve acik pozisyonlari
+    ANLIK fiyatla gosterir. Bu komut sadece veritabanini okur: kapanmis
+    islemler, bakiye egrisi, ogrenme -- ama canli pozisyon degeri yok.
+    """
+    import webbrowser
+
+    from .dashboard import DashboardServer, build_state
+
+    cfg = _load(args)
+    cfg.mode = args.mode or cfg.mode
+    if args.port:
+        cfg.dashboard.port = args.port
+    cfg.dashboard.enabled = True
+    cfg.validate()
+    store = Store(cfg.state_path, mode=cfg.mode)
+
+    server = DashboardServer(cfg, lambda: build_state(cfg, store, engine=None))
+    if not server.start():
+        print(f"Panel acilamadi. {cfg.dashboard.port} portu dolu olabilir; "
+              f"--port ile baskasini dene.")
+        return 1
+    print(f"Panel calisiyor: {server.url}")
+    print("Not: bot calismadigi icin acik pozisyonlar canli degerlenmiyor.")
+    print("Kapatmak icin Ctrl+C.")
+    if not args.no_browser:
+        try:
+            webbrowser.open(server.url)
+        except Exception:
+            pass
+    try:
+        while True:
+            time.sleep(3600)
+    except KeyboardInterrupt:
+        print("\nPanel kapatildi.")
+    finally:
+        server.stop()
+        store.close()
+    return 0
+
+
 # ------------------------------------------------------------------- install
 def cmd_install(args) -> int:
     """Botu isletim sistemi servisi olarak kurar: acilista baslar, cokerse toparlar."""
@@ -357,6 +402,14 @@ def build_parser() -> argparse.ArgumentParser:
     l.add_argument("--symbol")
     l.add_argument("--reset", action="store_true", help="ogrenme durumunu sifirla")
     l.set_defaults(func=cmd_learn)
+
+    w = sub.add_parser("dashboard", help="tarayicida izleme paneli ac")
+    w.add_argument("--mode", help="paper/testnet/live")
+    w.add_argument("--symbol")
+    w.add_argument("--port", type=int, help="varsayilan 8787")
+    w.add_argument("--no-browser", action="store_true",
+                   help="tarayiciyi kendiliginden acma")
+    w.set_defaults(func=cmd_dashboard)
 
     s = sub.add_parser("status", help="kayitli istatistikler")
     s.add_argument("--mode", help="paper/testnet/live")

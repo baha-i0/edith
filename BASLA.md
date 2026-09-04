@@ -51,6 +51,40 @@ Bundan sonra:
 Acik pozisyonlarin koruma emirleri **borsada durur** -- bilgisayar tamamen
 kapansa bile stop'un aktiftir.
 
+## 2.4. Panele bakmak (bilgisayardan)
+
+Bot calisirken tarayicini ac ve su adrese git:
+
+```
+http://127.0.0.1:8787
+```
+
+Hepsi bu. Kurulum yok, sifre yok. Gordugun sey:
+
+- **Bakiye egrisi** -- paranin zaman icinde nasil gittigi
+- **Acik pozisyonlar** -- su an ne kadar kar/zarardasin
+- **Isabet ve basabas** -- yan yana. Isabetin basabastan yuksekse
+  bot kar ediyor demektir. Tek basina "isabet %55" bir sey soylemez.
+- **Saglik kontrolleri** -- yesil nokta iyi, sari dikkat, kirmizi sorun
+- **Ogrenme** -- bot neyi kapatti, hangi dersi cikardi
+
+Bot kapaliyken gecmise bakmak istersen:
+
+```bash
+python -m bot dashboard
+```
+
+Iki sey bilmen yeter:
+
+- **Panelde dugme yok, sadece bakarsin.** Bu bilerek boyle. Kontrol
+  Telegram'da (asagida). Sebebi: localhost'ta acik duran bir sayfaya
+  tarayicindaki baska siteler de istek gonderebilir; oraya "pozisyonu
+  kapat" dugmesi koymak riskli olurdu.
+- **Sadece senin bilgisayarindan gorulur.** Ayni evdeki telefon bile
+  goremez. Bu da bilerek: panel bakiyeni gosteriyor.
+
+---
+
 ## 2.5. Telefonundan bota bakmak (istege bagli, 3 dakika)
 
 Bot sana kendisi rapor gonderir. Ama merak edip bakmak istersen Telegram

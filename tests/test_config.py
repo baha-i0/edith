@@ -136,3 +136,25 @@ def test_shipped_example_config_is_valid():
     cfg = load_config("config.example.yaml")
     assert cfg.mode in ("paper", "testnet", "live")
     assert cfg.timeframe == "4h", "backtest kanitina gore 4h sevk ediliyor"
+
+
+def test_ornek_config_TUM_bolumleri_yuklenebilir(tmp_path):
+    """config.example.yaml'daki her ic bolum gercekten nesneye cevrilmeli.
+
+    Yeni bir bolum ekleyip load_config'e kaydetmeyi unutmak, o bolumun
+    sessizce sozluk olarak kalmasina ve ilk kullanimda AttributeError
+    ile patlamasina yol acar. Bu test o hatayi yakalar.
+    """
+    from dataclasses import fields, is_dataclass
+
+    from bot.config import load_config
+
+    cfg = load_config("config.example.yaml")
+    for f in fields(cfg):
+        val = getattr(cfg, f.name)
+        if is_dataclass(f.type) or f.name in (
+                "account", "risk", "strategy", "execution",
+                "learning", "health", "shadow", "dashboard"):
+            assert not isinstance(val, dict), (
+                f"'{f.name}' bolumu sozluk olarak kaldi -- load_config icindeki "
+                "nested listesine eklenmemis")

@@ -20,6 +20,7 @@ from .health import CRITICAL, WARN, run_health_checks
 from .learning import Learner
 from .shadow import ShadowTracker
 from .models import LONG, Candle, Position, Trade
+from .dashboard import DashboardServer, build_state
 from .notify import CommandRouter, Notifier
 from .risk import RiskGuard, size_position, validate_signal_quality
 from .state import Store
@@ -51,6 +52,9 @@ class TradingEngine:
         self._last_report_day = ""
         self._last_alert: Dict[str, int] = {}
         self._running = True
+        # Panel motorun icinde yasar: acik pozisyonun ANLIK durumu
+        # veritabaninda degil, burada ve borsada.
+        self.dashboard = DashboardServer(cfg, lambda: build_state(cfg, store, self))
 
     # ------------------------------------------------------------ yasam dongusu
     def install_signal_handlers(self) -> None:
@@ -66,6 +70,8 @@ class TradingEngine:
         log.info("Bot basladi | mod=%s | semboller=%s | tf=%s | equity=%.2f",
                  self.cfg.mode, ",".join(self.cfg.symbols), self.cfg.timeframe,
                  self.broker.equity())
+        if self.dashboard.start():
+            print(f"Panel: {self.dashboard.url}")
         log.info("Basabas isabet orani (komisyon haric): %%%.1f | agirlikli hedef R=%.2f",
                  self.cfg.breakeven_win_rate() * 100, self.cfg.blended_target_r())
         if self.guard.state.shadow_mode:
@@ -81,6 +87,7 @@ class TradingEngine:
             elapsed = time.time() - started
             time.sleep(max(1.0, self.cfg.loop_seconds - elapsed))
         self.store.save_risk_state(self.guard.state)
+        self.dashboard.stop()
         log.info("Bot durdu. Acik pozisyonlarin koruma emirleri borsada duruyor.")
 
     # -------------------------------------------------------------------- tick

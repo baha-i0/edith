@@ -141,6 +141,32 @@ execution:
                                   # (0 = fiyatin degmesi yeter; iyimser)
 
 # ============================================================================
+# IZLEME PANELI
+# ============================================================================
+# Bot calisirken tarayicidan http://127.0.0.1:8787 adresine gir.
+# Bot kapaliyken gecmise bakmak icin:  python -m bot dashboard
+#
+# GUVENLIK -- bu iki ayari degistirmeden once oku:
+#
+#   host: 127.0.0.1  ->  SADECE bu bilgisayar. Panel bakiyeni, acik
+#   pozisyonlarini ve strateji parametrelerini gosterir. 0.0.0.0 yazmak
+#   bunu ayni agdaki (ev wifi, kafe, yurt) herkese acmak demektir.
+#   Localhost disina cikmak istersen DASHBOARD_TOKEN ortam degiskeni
+#   zorunlu; yoksa bot baslamaz.
+#
+#   Panel SALT OKUNURDUR ve oyle kalmali. Icinde "pozisyonu kapat" dugmesi
+#   yok. Sebep: localhost'ta dinleyen bir sunucuya, tarayicinda acik olan
+#   HERHANGI bir web sitesi istek gonderebilir (CSRF). Kimlik dogrulamasi
+#   olmayan bir kontrol ucu, rastgele bir sekmenin pozisyonlarini
+#   kapatabilmesi demek olurdu. Kontrol Telegram'da: orada chat_id var.
+dashboard:
+  enabled: true
+  host: 127.0.0.1
+  port: 8787
+  refresh_seconds: 20    # panel kendini kac saniyede bir yeniler
+  max_trades_shown: 50
+
+# ============================================================================
 # OGRENME KATMANI
 # ============================================================================
 # Onemli: "ogrenen bot" fikri, yanlis kurulursa calisan bir sistemi bozmanin

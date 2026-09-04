@@ -220,6 +220,77 @@ hata degil: bot market'e duser.
 
 ---
 
+## Izleme paneli
+
+Bot calisirken tarayicidan:
+
+```
+http://127.0.0.1:8787
+```
+
+Bot kapaliyken gecmise bakmak icin:
+
+```bash
+python -m bot dashboard          # tarayiciyi kendisi acar
+python -m bot dashboard --port 9000 --no-browser
+```
+
+Gosterdikleri: bakiye egrisi (altinda zirveden dusus golgesi), acik
+pozisyonlar anlik R degeriyle, R dagilimi, sembol basina performans, son
+islemler, saglik kontrolleri ve botun ogrendikleri.
+
+Bir sey ekliyor: **basabas isabet orani.** Isabet %55 tek basina bir sey
+soylemez -- odul/risk oranin 2:1 ise basabas nokta %33'tur, yani %55 iyidir;
+1:1 ise %50'dir, yani %55 zar zor kar eder. Panel ikisini yan yana gosterir.
+
+### Uc tasarim karari
+
+**1. Panel botun ICINDE calisir, ayri bir surec degil.**
+Panelin gostermesi gereken en degerli sey acik pozisyonun anlik durumu.
+Bu bilgi veritabaninda degil, botun hafizasinda ve borsada. Ayri bir surec
+sadece SQLite okuyabilir ve "su an ne kadar kardayim" sorusuna cevap
+veremezdi.
+
+**2. Panel SALT OKUNURDUR.** Icinde tek bir dugme yok.
+
+Sebep teknik ve onemli: `127.0.0.1`'de dinleyen bir HTTP sunucusuna,
+tarayicinda acik olan **herhangi bir web sitesi** istek gonderebilir
+(CSRF). Kimlik dogrulamasi olmayan bir "pozisyonu kapat" ucu koysaydim,
+rastgele bir sekmedeki kotu niyetli bir sayfa senin pozisyonlarini
+kapatabilirdi. Kontrol Telegram'da kalir; orada `chat_id` dogrulamasi var.
+
+`POST`, `PUT`, `DELETE` istekleri `405` ile reddedilir ve bu testle
+korunuyor (`test_yazma_istekleri_REDDEDILIR`).
+
+**3. Sifir dis bagimlilik.** Ne Flask ne CDN. Sunucu stdlib'in
+`http.server`'i; sayfa tek parca HTML+CSS+SVG. Sebep: bir raporlama
+ozelligi ugruna botun kurulum karmasikligini ve guvenlik yuzeyini
+buyutmek mantiksiz. Yan fayda: panel internetsiz calisir ve uctan gelen
+bir script guncellemesiyle degisemez. Testle korunuyor
+(`test_sayfa_disaridan_kaynak_YUKLEMEZ`).
+
+### Localhost disina acmak
+
+Varsayilan `127.0.0.1` -- sadece o bilgisayar. Baska bir makineden bakmak
+istersen **once SSH tuneli dene**, bu en guvenlisi:
+
+```bash
+ssh -L 8787:127.0.0.1:8787 kullanici@bot-makinesi
+```
+
+Gercekten agda dinlemesi gerekiyorsa `DASHBOARD_TOKEN` zorunludur; yoksa
+config dogrulamasi bota basla demez:
+
+```bash
+DASHBOARD_TOKEN=uzun-rastgele-bir-dizi
+# sonra: http://makine:8787/?token=uzun-rastgele-bir-dizi
+```
+
+Token'siz `host: 0.0.0.0` yazmak, bakiyeni ve pozisyonlarini ayni agdaki
+herkese acmak demektir. Config bunu reddeder.
+
+---
+
 ## Telegram: bot ile konusma
 
 Bot otonomdur; bu komutlar onu **yonetmek** icin degil, acil durumda
