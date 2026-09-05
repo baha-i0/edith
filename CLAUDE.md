@@ -58,7 +58,8 @@ diye sunmak zaman kaybi:
 |-------|------------------|
 | Kisa zaman dilimi (5m/15m/1h) | 15m'de yilda 734 islem -%30.3; 4h'te 57 islem +%5.0. Komisyon dar stopu yiyor. |
 | Ayni yonde pozisyon sinirlamak | `max_same_direction=1` yilligi %10.9'dan %4.3'e dusurdu. Es zamanli pozisyonlar EN IYI islemler. |
-| Riski artirmak | Tepe noktasi var: %5'ten sonra getiri DUSERKEN dusus artiyor. Ustelik tepe SABIT DEGIL (ilk yari %10 riskle +%181, ikinci yari -%0.2). |
+| Riski artirmak (TABAN ACIKKEN) | Taban 170$ iken risk %4'te islem sayisi 355'ten 11'e cokuyor: yastik tukeniyor, bot kendini durduruyor. |
+| ~~Riski artirmak (genel)~~ | **2026-09-05'te KISMEN CURUTULDU.** Taban kapaliyken %0.75 -> %1.5 her iki yarida da pozitif. Asagidaki bolume bak. |
 | Hedefi kucultup isabeti yukseltmek | tp1 1.0->0.7, tp2 4.0->3.0: isabet %54.5->%52.9 DUSTU, yillik %14.8->%10.0. |
 | Ogrenmeyi hizlandirmak | Esikleri 5 isleme dusurup onseli kaldirinca beklenti +0.088R->+0.041R, t 2.15->0.93. |
 | post_only "dolmazsa vazgec" | Tam donemde daha parlak (+%16.3) ama ZAMAN BOLMESINI GECEMEDI; kazanci komisyondan degil sanstan geliyordu. |
@@ -109,6 +110,68 @@ Iki bagimsiz denetim turu yapildi, README sonunda detaylari var.
 
 **254 test geciyor.** Degisiklikten sonra `python -m pytest tests/ -q`.
 
+## 2026-09-05 olcumleri (risk ve cikis seviyeleri)
+
+Hepsi 15 sembol / 4h / 60 ay / gercek komisyon+funding+slipaj, ve
+zaman bolmesi (ilk 30 ay + son 30 ay) ile dogrulandi.
+
+### Risk yuzdesi: %0.75 -> %1.5 KABUL EDILDI
+
+| risk | 60 ay CAGR | 200$ -> | maks dusus | ilk yari | ikinci yari |
+|------|-----------|---------|-----------|----------|-------------|
+| %0.75 | +13.4% | 372$ | %14.1 | +16.9% | +7.5% |
+| **%1.5** | **+29.1%** | **706$** | **%26.7** | +36.0% | +17.8% |
+| %2.0 | +40.2% | 1064$ | %34.8 | +53.2% | +23.1% |
+
+`config.yaml` %1.5'e cekildi. Her iki yarida da pozitif oldugu icin
+projenin kendi kabul sinavini geciyor.
+
+### SERT TAVAN: taban kapaliyken risk %2.0'de kirpiliyor
+
+`bot/risk.py:192` -> `yuzde = min(risk_per_trade_pct, 6.0 if floor > 0 else 2.0)`
+
+Bu yuzden %2.5, %4, %5, %10 hepsi BIREBIR ayni sonucu verir. Hipotez
+test edildi: %2.1 ile %10 kurusuna kadar ayni, %1.9 farkli. Config
+dogrulamasi da taban kapaliyken %2 ustunu zaten reddediyor -- gizli
+hata degil, bilincli emniyet. Ileride "risk %5 deneyelim" diyen olursa
+once bunu oku.
+
+### Sabit yuzdeli cikis (+%1.6 / -%1.2) -- OLCULDU, KARAR TESTNET'E BIRAKILDI
+
+Kullanicinin fikri. ATR yerine sabit yuzde stop/hedef. Backtest'te
+mevcut sistemi YENIYOR ve iki yariyi da geciyor:
+
+| | mevcut (ATR) | sabit %1.6/%1.2 |
+|---|---|---|
+| 60 ay CAGR | +29.1% | **+48.5%** |
+| ilk yari | +36.0% | +45.2% |
+| ikinci yari | +17.8% | +52.1% |
+| islem | 353 | 660 |
+| maks dusus | %26.7 | %35.9 |
+
+Reddetmeden once bilinmesi gerekenler:
+
+- Not: `min_reward_risk: 1.5` bu fikri normalde bastan reddediyor
+  (1.6/1.2 = 1.33). Olcum icin kapi gecici acildi.
+- **Saglamlik izgarasi:** stop %1.0-%2.0 ve R:R 1.33-2.0 araligi genis
+  bir pozitif bolge -- tek sayida parlamiyor, yani overfit degil.
+  AMA stop %0.8'de -%9.6'ya donuyor; komisyon duvari cok yakinda.
+- **Slipaj olumcul:** 2bps +48.5% / 5bps +44.5% / **10bps +24.3%** /
+  20bps hic islem yok. `check` ciktisinda ATOMUSDT spread'i 6.49 bps --
+  alt coinlerde 10 bps gercekci. Avantajin yarisi orada gidiyor.
+- **Son 12 ay: -%6.5** (mevcut sistem -%4.7). Bozulmayi DUZELTMIYOR.
+- Yapisal itiraz: sabit yuzde volatiliteye uyum saglamaz, ATR saglar.
+- Ogrenme katmani testte "stop avlanmasi" tespit edip stoplari 1.15x
+  genisletti -- dar stopun avlandiginin isareti.
+
+Sonuc: fikir ciddi ama tam da backtest'in cevaplayamayacagi yerde
+duruyor (gercek dolum kalitesi). 4h mumda %1.2 stop ve %1.6 hedef
+genelde AYNI mumun icinde; backtest bunu kotumser kuralla cozuyor ama
+gercekte ne oldugunu bilmiyor. Karar testnet olcumune birakildi.
+
+Deney betikleri (repoya girmedi, scratchpad'de): risk taramasi,
+saglamlik izgarasi, sabit hedef karsilastirmasi.
+
 ## Kullanici su an nerede
 
 Windows 11, PowerShell. Repo klonlandi:
@@ -122,20 +185,41 @@ Tamamlanan adimlar:
       (benim sandbox'imda cografi engel vardi, kullanicinin baglantisinda yok)
 - [x] `python -m bot backtest --portfolio --months 60` -- rakamlar dogrulandi
 
+- [x] Veri yollari OneDrive DISINA tasindi (asagiya bak)
+- [x] `risk_per_trade_pct` %0.75 -> %1.5
+- [x] Panele komut kilavuzu eklendi (terminal + Telegram, duz Turkce)
+- [x] Telegram: token + chat_id .env'de, token dogrulandi (@EDITHTraderBot)
+
 Siradaki adim:
-- [ ] `python -m bot paper` -- EN AZ 2 HAFTA. Bu adim atlanmamali.
+- [ ] Kullanici @EDITHTraderBot'a /start basacak -- bot ilk mesaji
+      kullanici yazmadan gonderemez ("chat not found" alindi)
+- [ ] Testnet anahtarlari: testnet.binancefuture.com AYRI bir sistem,
+      gercek Binance hesabi orada gecerli DEGIL
+- [ ] Testnet oturumu: 2 hafta kagit yerine birkac saatte tesisati
+      zorlama (kapat/ac, kismi dolum, reconcile) + sabit yuzdeli cikis
+      fikrini gercek emir defterinde sinama
+- [ ] Kagit modu birkac gun (`python -m bot paper`)
 - [ ] Panel: http://127.0.0.1:8787
-- [ ] Telegram (istege bagli): @BotFather + @userinfobot -> .env
-- [ ] Servis kurulumu: `python -m bot install --mode paper`
-- [ ] 2 hafta sonra sonuc makulse canli
+
+Kullanici REDDETTI:
+- Windows servisi olarak kurulum ("istemiyorum")
+- 2 haftalik kagit modu ("mantikli gelmedi, hizlandiralim")
 
 **UYARI:** `--months` varsayilani 12'dir. Kullanici bir kez 12 aylik
 backtest calistirip -%4.7 gordu ve kafasi karisti. 5 yillik rakamlar icin
 `--months 60` sart.
 
-**OneDrive notu:** repo OneDrive senkronize klasorde. Bot 7/24 calismaya
-baslamadan once `data/` ve `logs/` OneDrive'dan haric tutulmali -- SQLite'a
-saniyede onlarca yazma var, OneDrive dosya kilidi cakismasi yaratabilir.
+**OneDrive notu -- COZULDU (2026-09-05):** repo hala OneDrive'da ama
+canli yazilan dosyalar disari tasindi:
+
+    state_path: C:/Users/bahai/EDITH-veri/bot.db
+    log_path:   C:/Users/bahai/EDITH-veri/logs/bot.log
+
+OneDrive ayarlarindan klasor haric tutmak yerine bu yol secildi (o
+yontem kirilgan). Sorunun gercek oldugu kaniti: eski `data/bot.db`
+dosyasini silmek istedigimde OneDrive dosyayi KILITLI tutuyordu.
+`data/archive` (12 MB backtest onbellegi) bilerek OneDrive'da kaldi --
+oraya sadece backtest sirasinda yazilir.
 
 ## Yapilmamis / acik konular
 

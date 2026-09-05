@@ -529,6 +529,27 @@ pre{font-family:var(--mono);font-size:11.5px;white-space:pre-wrap;margin:0;
 svg{display:block;width:100%}
 .ro{font-size:11px;color:var(--faint);border-top:1px solid var(--line);
   margin-top:22px;padding-top:14px;line-height:1.7}
+details.help{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:0;margin-bottom:14px}
+details.help>summary{cursor:pointer;padding:13px 16px;font-size:12px;font-weight:600;
+  color:var(--dim);list-style:none;user-select:none}
+details.help>summary::-webkit-details-marker{display:none}
+details.help>summary::before{content:"\25B8 ";color:var(--accent)}
+details.help[open]>summary::before{content:"\25BE "}
+.help .body{padding:0 16px 16px}
+.help .lead{font-size:11.5px;color:var(--faint);line-height:1.7;margin:0 0 12px}
+.cmdgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:900px){.cmdgrid{grid-template-columns:1fr}}
+.cmdgrid h3{font-size:10px;color:var(--dim);letter-spacing:.1em;text-transform:uppercase;
+  margin:0 0 8px;font-weight:600}
+.cmd{display:flex;gap:10px;padding:6px 0;border-bottom:1px solid rgba(37,44,58,.5);
+  font-size:11.5px;line-height:1.55}
+.cmd:last-child{border-bottom:none}
+.cmd code{font-family:var(--mono);font-size:11px;color:var(--accent);flex:none;width:172px}
+.cmdgrid .tg code{width:82px}
+.cmd span{color:var(--faint)}
+.help .note{font-size:11px;color:var(--faint);line-height:1.7;margin:14px 0 0;
+  border-top:1px solid var(--line);padding-top:11px}
 </style>
 
 <div class="wrap">
@@ -583,6 +604,50 @@ svg{display:block;width:100%}
       <pre id="learning"></pre>
     </section>
   </div>
+
+  <details class="help">
+    <summary>Komutlar - hangisi ne ise yarar?</summary>
+    <div class="body">
+      <p class="lead">Terminal komutlarini <b>repo klasorunun icinden</b> calistir. Once bir kez
+      <code>cd "C:\Users\bahai\OneDrive\Masaustu\Apps\EDITH"</code> yaz; o pencere kapanana
+      kadar gecerlidir. Klasor disinda "No module named bot" hatasi alirsin.</p>
+      <div class="cmdgrid">
+        <div>
+          <h3>Terminal</h3>
+          <div class="cmd"><code>python -m bot paper</code><span><b>Kagit modu.</b> Gercek fiyat, sahte para. Hicbir riski yok, prova icin.</span></div>
+          <div class="cmd"><code>python -m bot testnet</code><span>Binance'in test borsasi. Gercek emir akisi, yine sahte para.</span></div>
+          <div class="cmd"><code>python -m bot live</code><span><b>GERCEK PARA.</b> Kagit modunda sonuc gormeden calistirma.</span></div>
+          <div class="cmd"><code>python -m bot doctor</code><span>"Her sey yolunda mi?" Duz Turkce rapor; sorun varsa ne yapacagini yazar.</span></div>
+          <div class="cmd"><code>python -m bot status</code><span>Kayitli istatistikler: islem sayisi, isabet, kar/zarar, son islemler.</span></div>
+          <div class="cmd"><code>python -m bot learn</code><span>Bot hangi kurulumda ne ogrendi.</span></div>
+          <div class="cmd"><code>python -m bot floor</code><span>Sermaye tabani: parani koruyan alt sinir nerede.</span></div>
+          <div class="cmd"><code>python -m bot check</code><span>Ayarlar dogru mu, Binance baglantisi calisiyor mu.</span></div>
+          <div class="cmd"><code>python -m bot backtest --portfolio --months 60</code><span>5 yillik gecmis veride sinav. <b>--months 60 sart;</b> varsayilan 12 yaniltir.</span></div>
+          <div class="cmd"><code>python -m bot dashboard</code><span>Bu paneli bot kapaliyken acar (gecmise bakmak icin).</span></div>
+          <div class="cmd"><code>Ctrl + C</code><span>Botu durdurur. Cevap vermesi 1 dakikayi bulabilir, normaldir.</span></div>
+        </div>
+        <div class="tg">
+          <h3>Telegram (kurulduysa)</h3>
+          <div class="cmd"><code>/durum</code><span>Acik pozisyonlar ve gunun ozeti.</span></div>
+          <div class="cmd"><code>/bakiye</code><span>Hesap bakiyesi ve serbest marj.</span></div>
+          <div class="cmd"><code>/rapor</code><span>Gunluk tam ozet.</span></div>
+          <div class="cmd"><code>/ogrenme</code><span>Bot neyi ogrendi.</span></div>
+          <div class="cmd"><code>/dur</code><span>Yeni islem acmayi durdurur. Acik pozisyonlar korunur.</span></div>
+          <div class="cmd"><code>/devam</code><span>Tekrar islem acmaya baslar.</span></div>
+          <div class="cmd"><code>/kapat</code><span>TUM pozisyonlari hemen kapatir ve durur. Onay ister.</span></div>
+          <div class="cmd"><code>/yardim</code><span>Bu listeyi telefonuna gonderir.</span></div>
+        </div>
+      </div>
+      <p class="note"><b>Mod ne demek?</b>
+      <code>paper</code> = sahte para, gercek fiyat (prova).
+      <code>testnet</code> = Binance'in test borsasi.
+      <code>live</code> = gercek para.
+      Her modun kaydi ayri tutulur; kagit modundaki islemler canli istatistige karismaz.
+      <br><b>Sabir notu:</b> 4 saatlik grafikte haftada ortalama 1-2 islem beklenir. Panelin
+      gunlerce bos gorunmesi ariza degil. Botun calistiginin kaniti islem degil, bakiye kaydidir --
+      <code>doctor</code> "Bot calisiyor mu" satirinda gorunur.</p>
+    </div>
+  </details>
 
   <div class="ro">
     Bu panel <b>salt okunurdur</b> ve yalniz bu bilgisayardan erisilebilir.
