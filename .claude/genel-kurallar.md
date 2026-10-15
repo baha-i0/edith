@@ -27,8 +27,8 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 - Projelere ayrı ajan açılmaz. Bir uygulamaya özgü bilgi o projenin `CLAUDE.md`'sine yazılır; ajanlar işe onu okuyarak başlar.
 - **Ajanlar varsayılan olarak kapalıdır; işi ana oturum kendisi yapar.** Ajan yalnızca şu durumlarda çağrılır:
   1. Ben "ajanları kullan" dersem ya da bir ajanın adını söylersem.
-  2. Gerçekten gerektiğinde, ben söylemesem de: mağazaya göndermeden ya da yayından önce `quality-control` denetimi; vergi ve hukuk sorularında `legal-finance`; birbirinden bağımsız parçalara bölünebilen çok büyük işler. Bu durumda neden ajan kullandığını bir cümleyle söyle.
-- Ajan çağrılınca bağımsız işler aynı anda çalıştırılır.
+  2. Gerçekten gerektiğinde, ben söylemesem de: mağazaya göndermeden ya da yayından önce `quality-control` denetimi; çok dosyalı büyük bir kod değişikliğini commit etmeden önce `quality-control` ile bağımsız kontrol; vergi ve hukuk sorularında `legal-finance`; birbirinden bağımsız parçalara bölünebilen çok büyük işler. Bu durumda neden ajan kullandığını bir cümleyle söyle.
+- Ajan çağrılınca bağımsız işler aynı anda çalıştırılır. Ana oturum, ajan raporundaki "Skills used" satırına bakar; açılması gereken bir skill atlanmışsa işi o skill'le yeniden yaptırır.
 - Haberleşme dosyasızdır: ajan sonucu kısa raporla ana oturuma verir, ana oturum sonraki ajana yalnızca gerekeni aktarır.
 - Başka bir oturuma kalan yarım iş için projede tek dosya vardır: `.claude/ajan-defteri.md` (en çok 20 satır). İş bitince çözülen ve önemsiz satırlar silinir, kalıcı kararlar `CLAUDE.md`'ye taşınır.
 - Gelişim: ajan raporunda "📚 Proposal" verir. Ana oturum işin sonunda bana butonla sorar.
@@ -75,3 +75,7 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 - Geliri bildirmemek gibi yasa dışı yollar yok. Her zaman yasal ve en az yük getiren yolu seç.
 - İlk ödeme gelmeden önce bana hatırlat: istisna belgesini al, ayrı banka hesabını aç, mali müşavire bir kez danış.
 - Ayrıntılar: `C:\Users\bahai\OneDrive\Masaüstü\Apps\zihinsel-guc-app\docs\YASAL-VERGI-MUHASEBE.md`.
+
+## Bekleyen hatırlatmalar
+
+- Canva hesabı Claude'a henüz bağlanmadı (2026-10-16). Canva skill'i gerektiğinde ya da bir sonraki uygun anda bana hatırlat. Ben onaylarsam Chrome üzerinden bağla (claude.ai → Özelleştirme → Bağdaştırıcılar → Canva). Bağlanınca bu maddeyi sil.

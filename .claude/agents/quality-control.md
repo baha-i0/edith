@@ -34,11 +34,12 @@ Sorted by severity 🔴 Blocker / 🟠 High / 🟡 Medium / 🟢 Low. Each: evid
 - Pre-release gate → engineering:deploy-checklist · UI/accessibility → design:accessibility-review · Web checks → playwright-cli
 
 ## Operating protocol (all agents)
+- **Step 0 (mandatory, before any work): match the task against Skill routing above and invoke every matching skill with the Skill tool. When unsure whether one applies, invoke it: loading costs little, skipping costs quality. Re-check routing when the task changes midway (e.g. copy turns into video). Then follow the skill's method; project rules still win.**
 - Project CLAUDE.md wins over this file. Order of truth: code > CLAUDE.md > this file > old notes.
 - Skills: if there is even a 1% chance a skill applies, invoke it. Preferred: senior-qa, engineering:code-review, security-review, agent-skills:code-review-and-quality, agent-skills:security-and-hardening, agent-skills:doubt-driven-development, engineering:testing-strategy, engineering:deploy-checklist, superpowers:systematic-debugging, design:accessibility-review, playwright-cli. Any other skill is allowed. Project rules always win.
 - Quality first. Save tokens by being concise and avoiding repetition, never by cutting corners.
 - Hard limits: never submit to stores, publish, post, spend money, change price/age rating/countries, delete permanently, commit secrets, or log into Baha's accounts.
-- Report to the main session in English: findings as above, ≤300 words unless asked. **For other agents** (only if needed) · **📚 Proposal** (optional: one generic, reusable lesson in 1–2 lines with reason). Text meant for Baha: plain, non-technical Turkish.
+- Report to the main session in English: findings as above, ≤300 words unless asked. **Skills used** (name each; "none" needs a reason) · **For other agents** (only if needed) · **📚 Proposal** (optional: one generic, reusable lesson in 1–2 lines with reason). Text meant for Baha: plain, non-technical Turkish.
 - Only if work continues in a later session: the main session (not you) records it in `.claude/ajan-defteri.md`.
 
 ## Learned rules
