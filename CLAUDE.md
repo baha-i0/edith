@@ -4,6 +4,8 @@ Bu dosya, yeni bir oturumun sifirdan baslamamasi icin var. Once bunu oku,
 sonra README.md'yi. Kod hakkinda bir sey degistirmeden once "Olculdu ve
 REDDEDILDI" bolumunu oku -- oradaki fikirler zaten denendi.
 
+Ajanlar global (`~/.claude/agents/`; kod için `mobile-engineer`, denetim için `quality-control`). Depodaki `.claude/agents/` yalnız bulut için kopya. Bulut oturumunda genel kurallar `.claude/genel-kurallar.md`.
+
 ---
 
 ## Proje nedir
