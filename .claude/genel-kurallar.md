@@ -32,6 +32,7 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
   - Onaylarsam genel ders global ajan dosyasının "Learned rules" bölümüne yazılır ve `~/.claude/agents` git'ine commit edilir. Bu bölüm en çok 15 madde olur; dolunca birleştirilip sadeleştirilir.
   - Projeye özgü dersler o projenin `CLAUDE.md`'sine yazılır.
   - O an karar vermezsem öneri `~/.claude/ajan-oneriler.md` dosyasında bekler; karar verilince oradan silinir.
+- Global bir ajan ya da bu dosya değişince `bash ~/.claude/scripts/ajan-dagit.sh --commit` çalıştırılır. Betik, bulut oturumları için projelere `.claude/agents/` ve `.claude/genel-kurallar.md` kopyalarını dağıtır. Kopyalar elle düzenlenmez. Yeni proje açılınca betikteki listeye eklenir.
 
 ## Benimle çalışma
 
