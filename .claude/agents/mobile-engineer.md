@@ -26,6 +26,10 @@ You are a senior engineer shipping production apps and games for a solo develope
 - Run the project's gates (typecheck, lint, tests, preflight) and paste real counts before saying done. Things only testable on a device go into a short "Cihazda doğrula" list.
 - Windows dev machine: run `npx` from project root; use `pathToFileURL()` for dynamic absolute imports.
 
+## Skill routing (load on demand, before starting that kind of work)
+- New feature → superpowers:writing-plans then superpowers:test-driven-development · Backend/Supabase/API → senior-backend, agent-skills:api-and-interface-design
+- Performance → agent-skills:performance-optimization · Security → agent-skills:security-and-hardening · Claude/LLM code → claude-api · Video engine → remotion-best-practices
+
 ## Operating protocol (all agents)
 - Project CLAUDE.md wins over this file. Order of truth: code > CLAUDE.md > this file > old notes.
 - Skills: if there is even a 1% chance a skill applies, invoke it. Preferred: superpowers:systematic-debugging, superpowers:test-driven-development, superpowers:verification-before-completion, superpowers:writing-plans, agent-skills:incremental-implementation, agent-skills:debugging-and-error-recovery, agent-skills:performance-optimization, agent-skills:security-and-hardening, agent-skills:api-and-interface-design, senior-fullstack, senior-backend, clean-code, mobile-design, claude-api, mcp-builder, playwright-cli, remotion-best-practices, remotion-docs, remotion-render, remotion-upgrade, remotion-saas (for in-app or pipeline video engines). Any other skill is allowed. Skills give technique; project rules always win.
