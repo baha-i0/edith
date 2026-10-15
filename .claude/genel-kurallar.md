@@ -32,7 +32,7 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
   - Onaylarsam genel ders global ajan dosyasının "Learned rules" bölümüne yazılır ve `~/.claude/agents` git'ine commit edilir. Bu bölüm en çok 15 madde olur; dolunca birleştirilip sadeleştirilir.
   - Projeye özgü dersler o projenin `CLAUDE.md`'sine yazılır.
   - O an karar vermezsem öneri `~/.claude/ajan-oneriler.md` dosyasında bekler; karar verilince oradan silinir.
-- **Global bir ajan ya da bu dosya değiştiği anda `bash ~/.claude/scripts/ajan-dagit.sh --commit` çalıştırılır.** Projedeki `.claude/agents/` kopyaları aynı adlı global ajanı ezer; bu hem bilgisayarda hem bulutta geçerlidir. Dağıtım yapılmazsa projeler eski ajanla çalışır. Betik `.claude/genel-kurallar.md` kopyasını da günceller. Kopyalar elle düzenlenmez. Yeni proje açılınca betikteki listeye eklenir.
+- **Global bir ajan ya da bu dosya Edit/Write ile değişince bir kanca (`~/.claude/scripts/ajan-hook.sh`) kopyaları projelere kendiliğinden dağıtır. İş bitince `bash ~/.claude/scripts/ajan-dagit.sh --commit` ile commit ve push edilir; dosya kabuk komutuyla değiştiyse bu komut mutlaka çalıştırılır.** Projedeki `.claude/agents/` kopyaları aynı adlı global ajanı ezer; bu hem bilgisayarda hem bulutta geçerlidir. Dağıtım yapılmazsa projeler eski ajanla çalışır. Betik `.claude/genel-kurallar.md` kopyasını da günceller. Kopyalar elle düzenlenmez. Yeni proje açılınca betikteki listeye eklenir.
 - Görev sınırları: mağaza metni ve anahtar kelimeler `marketing`'in, çevirisi `copy-translation`'ın, yüklemesi `release-engineer`'ındır. Fiyat önerisi `marketing`'den gelir, karar benimdir.
 - Ders anlatımı ya da kişisel video gibi işler için ana oturum Remotion ya da HyperFrames skill'lerini doğrudan kullanır; ajan gerekmez.
 
