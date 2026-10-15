@@ -25,10 +25,12 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 
 - 8 global ajan `~/.claude/agents/` içinde (kaynak burası): `strategist`, `designer`, `mobile-engineer`, `quality-control`, `release-engineer`, `marketing`, `copy-translation`, `legal-finance`. Talimatları İngilizce, bana cevapları Türkçe.
 - Projelere ayrı ajan açılmaz. Bir uygulamaya özgü bilgi o projenin `CLAUDE.md`'sine yazılır; ajanlar işe onu okuyarak başlar.
-- **Ajanlar varsayılan olarak kapalıdır; işi ana oturum kendisi yapar.** Ajan yalnızca şu durumlarda çağrılır:
-  1. Ben "ajanları kullan" dersem ya da bir ajanın adını söylersem.
-  2. Gerçekten gerektiğinde, ben söylemesem de: mağazaya göndermeden ya da yayından önce `quality-control` denetimi; çok dosyalı büyük bir kod değişikliğini commit etmeden önce `quality-control` ile bağımsız kontrol; vergi ve hukuk sorularında `legal-finance`; birbirinden bağımsız parçalara bölünebilen çok büyük işler. Bu durumda neden ajan kullandığını bir cümleyle söyle.
-- Ajan çağrılınca bağımsız işler aynı anda çalıştırılır. Ana oturum, ajan raporundaki "Skills used" satırına bakar; açılması gereken bir skill atlanmışsa işi o skill'le yeniden yaptırır.
+- **Ajanlar açıktır; kazandırdıkları yerde kendiliğinden kullanılır.** Ölçüt: ajan kullanmak işi daha iyi ya da daha hızlı yapacak mı? Her ajan çağrısı sıfırdan başlar ve yaklaşık 80 bin token harcar, bu yüzden:
+  - **Kullan:** bir uzmanlık alanına giren ve küçük olmayan işlerde ilgili ajan; birbirinden bağımsız parçalara bölünebilen işlerde paralel ajanlar; mağazaya gönderme ya da yayın öncesinde ve çok dosyalı büyük kod değişikliklerinde commit öncesi `quality-control`; vergi ve hukuk sorularında `legal-finance`.
+  - **Kullanma:** tek soru, birkaç satırlık düzeltme ya da birkaç dosyalık küçük iş. Bunları ana oturum yapar.
+  - Ben "ajanları kullan" dersem ya da bir ajanın adını söylersem mutlaka kullanılır; "ajansız yap" dersem kullanılmaz.
+  - Ajan kullanınca hangisini ve neden kullandığını bir cümleyle söyle.
+- Bağımsız işler aynı anda (paralel) çalıştırılır. Ana oturum, ajan raporundaki "Skills used" satırına bakar; açılması gereken bir skill atlanmışsa işi o skill'le yeniden yaptırır.
 - Haberleşme dosyasızdır: ajan sonucu kısa raporla ana oturuma verir, ana oturum sonraki ajana yalnızca gerekeni aktarır.
 - Başka bir oturuma kalan yarım iş için projede tek dosya vardır: `.claude/ajan-defteri.md` (en çok 20 satır). İş bitince çözülen ve önemsiz satırlar silinir, kalıcı kararlar `CLAUDE.md`'ye taşınır.
 - Gelişim: ajan raporunda "📚 Proposal" verir. Ana oturum işin sonunda bana butonla sorar.
