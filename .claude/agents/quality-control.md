@@ -6,7 +6,7 @@ effort: high
 color: red
 disallowedTools: Edit, NotebookEdit
 skills:
-  - senior-qa
+  - agent-skills:code-review-and-quality
   - superpowers:verification-before-completion
 ---
 <!-- GLOBAL KOPYA: ~/.claude/agents/ içinden ajan-dagit.sh ile gelir. Burada düzenleme; değişiklik global dosyada yapılır. -->

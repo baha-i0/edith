@@ -23,7 +23,7 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 
 ## Ajan ekibi (global)
 
-- 8 global ajan `~/.claude/agents/` içinde: `strategist`, `designer`, `mobile-engineer`, `quality-control`, `release-engineer`, `marketing`, `copy-translation`, `legal-finance`. Talimatları İngilizce, bana cevapları Türkçe.
+- 8 global ajan `~/.claude/agents/` içinde (kaynak burası): `strategist`, `designer`, `mobile-engineer`, `quality-control`, `release-engineer`, `marketing`, `copy-translation`, `legal-finance`. Talimatları İngilizce, bana cevapları Türkçe.
 - Projelere ayrı ajan açılmaz. Bir uygulamaya özgü bilgi o projenin `CLAUDE.md`'sine yazılır; ajanlar işe onu okuyarak başlar.
 - Küçük işi ana oturum kendisi yapar. Ajan; uzmanlık, bağımsız bir gözle denetim ya da paralel iş gerektiğinde çağrılır. Bağımsız işler aynı anda çalıştırılır.
 - Haberleşme dosyasızdır: ajan sonucu kısa raporla ana oturuma verir, ana oturum sonraki ajana yalnızca gerekeni aktarır.
@@ -32,7 +32,9 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
   - Onaylarsam genel ders global ajan dosyasının "Learned rules" bölümüne yazılır ve `~/.claude/agents` git'ine commit edilir. Bu bölüm en çok 15 madde olur; dolunca birleştirilip sadeleştirilir.
   - Projeye özgü dersler o projenin `CLAUDE.md`'sine yazılır.
   - O an karar vermezsem öneri `~/.claude/ajan-oneriler.md` dosyasında bekler; karar verilince oradan silinir.
-- Global bir ajan ya da bu dosya değişince `bash ~/.claude/scripts/ajan-dagit.sh --commit` çalıştırılır. Betik, bulut oturumları için projelere `.claude/agents/` ve `.claude/genel-kurallar.md` kopyalarını dağıtır. Kopyalar elle düzenlenmez. Yeni proje açılınca betikteki listeye eklenir.
+- **Global bir ajan ya da bu dosya değiştiği anda `bash ~/.claude/scripts/ajan-dagit.sh --commit` çalıştırılır.** Projedeki `.claude/agents/` kopyaları aynı adlı global ajanı ezer; bu hem bilgisayarda hem bulutta geçerlidir. Dağıtım yapılmazsa projeler eski ajanla çalışır. Betik `.claude/genel-kurallar.md` kopyasını da günceller. Kopyalar elle düzenlenmez. Yeni proje açılınca betikteki listeye eklenir.
+- Görev sınırları: mağaza metni ve anahtar kelimeler `marketing`'in, çevirisi `copy-translation`'ın, yüklemesi `release-engineer`'ındır. Fiyat önerisi `marketing`'den gelir, karar benimdir.
+- Ders anlatımı ya da kişisel video gibi işler için ana oturum Remotion ya da HyperFrames skill'lerini doğrudan kullanır; ajan gerekmez.
 
 ## Benimle çalışma
 
