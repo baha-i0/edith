@@ -25,7 +25,10 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 
 - 8 global ajan `~/.claude/agents/` içinde (kaynak burası): `strategist`, `designer`, `mobile-engineer`, `quality-control`, `release-engineer`, `marketing`, `copy-translation`, `legal-finance`. Talimatları İngilizce, bana cevapları Türkçe.
 - Projelere ayrı ajan açılmaz. Bir uygulamaya özgü bilgi o projenin `CLAUDE.md`'sine yazılır; ajanlar işe onu okuyarak başlar.
-- Küçük işi ana oturum kendisi yapar. Ajan; uzmanlık, bağımsız bir gözle denetim ya da paralel iş gerektiğinde çağrılır. Bağımsız işler aynı anda çalıştırılır.
+- **Ajanlar varsayılan olarak kapalıdır; işi ana oturum kendisi yapar.** Ajan yalnızca şu durumlarda çağrılır:
+  1. Ben "ajanları kullan" dersem ya da bir ajanın adını söylersem.
+  2. Gerçekten gerektiğinde, ben söylemesem de: mağazaya göndermeden ya da yayından önce `quality-control` denetimi; vergi ve hukuk sorularında `legal-finance`; birbirinden bağımsız parçalara bölünebilen çok büyük işler. Bu durumda neden ajan kullandığını bir cümleyle söyle.
+- Ajan çağrılınca bağımsız işler aynı anda çalıştırılır.
 - Haberleşme dosyasızdır: ajan sonucu kısa raporla ana oturuma verir, ana oturum sonraki ajana yalnızca gerekeni aktarır.
 - Başka bir oturuma kalan yarım iş için projede tek dosya vardır: `.claude/ajan-defteri.md` (en çok 20 satır). İş bitince çözülen ve önemsiz satırlar silinir, kalıcı kararlar `CLAUDE.md`'ye taşınır.
 - Gelişim: ajan raporunda "📚 Proposal" verir. Ana oturum işin sonunda bana butonla sorar.
