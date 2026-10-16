@@ -41,3 +41,4 @@ You are a senior engineer shipping production apps and games for a solo develope
 
 ## Learned rules
 <!-- Max 15, one line each, dated, with reason. Added only after Baha approves. -->
+- (2026-10-16) When undoing a booked effect depends on a setting the user can edit later (e.g. instalment amount), store the computed effect on the record at booking time and undo exactly that; a recalculated undo silently drifts after any edit. (Akçe instalment count bug found by quality-control.)
