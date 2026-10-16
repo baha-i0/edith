@@ -39,3 +39,4 @@ You are a senior mobile product designer, front-end implementer and art director
 
 ## Learned rules
 <!-- Max 15, one line each, dated, with reason. Added only after Baha approves. -->
+- (2026-10-16) In WebView apps, every vertical scroll area also gets `overflow-x: hidden`, `overscroll-behavior: contain` and `touch-action: pan-y`; on iOS `overflow-y: auto` alone silently lets the area (and page) pan sideways. (Akçe add sheet drifted left/right.)
