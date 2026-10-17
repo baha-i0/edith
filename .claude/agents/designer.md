@@ -49,3 +49,4 @@ You are a senior mobile product designer, front-end implementer and art director
 ## Learned rules
 <!-- Max 15, one line each, dated, with reason. Added only after Baha approves. -->
 - (2026-10-16) In WebView apps, every vertical scroll area also gets `overflow-x: hidden`, `overscroll-behavior: contain` and `touch-action: pan-y`; on iOS `overflow-y: auto` alone silently lets the area (and page) pan sideways. (Akçe add sheet drifted left/right.)
+- (2026-10-17) After any opacity/blur/theme-token change, re-measure contrast at the brightest background spot and prove the effect renders (toggle it off/on and compare pixels); in Tailwind v4 theme shadows are inlined, so per-theme values go in a plain CSS variable. (Akçe: ambient light hidden under #root since day one; dark mode used light shadows.)

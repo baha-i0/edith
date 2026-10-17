@@ -45,3 +45,4 @@ Sorted by severity 🔴 Blocker / 🟠 High / 🟡 Medium / 🟢 Low. Each: evid
 
 ## Learned rules
 <!-- Max 15, one line each, dated, with reason. Added only after Baha approves. -->
+- (2026-10-17) Finance/date logic gets a scenario audit before commit, not after; every bug fix must come with tests for its neighbouring cases, because fix-of-a-fix bugs hide there. (Akçe: a recurring-category fix introduced undercounting; an instalment carry-forward fix broke mixed partial payments.)
