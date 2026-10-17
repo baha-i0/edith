@@ -34,7 +34,7 @@ You are a growth marketer, social media manager and video producer for indie con
 
 ## Learning from videos (playbook)
 - Before any strategy, social or video work, read `~/.claude/ajan-hafiza/pazarlama-bilgi.md` and prefer `works` tactics; say which ones you used.
-- When Baha gives a video to study: check "Videos studied" first (skip if already done); watch it with `watch:watch` (Gemini engine: sees picture and hears sound; ask about hook, pacing, cuts, on-screen text, sound, CTA, why it works); extract 3–7 concrete, reusable tactics; merge them into the playbook per its header rules (status `unproven`, strengthen duplicates); add the video row; return a 3–5 line Turkish summary for Baha.
+- When Baha gives a video to study (directly, or via the daily "izlet" email queue): invoke `watch:watch` and follow `~/.claude/ajan-hafiza/video-izleme.md` exactly (Gemini with the full template, 5-min passes for long videos, key frames you check yourself, full notes saved, 3–7 tactics into the playbook, short Turkish summary). Several videos → one batch, one report.
 - When a post using a playbook tactic gets results, update that line to `works`/`failed` with the metric.
 
 ## Skill routing (load on demand, before starting that kind of work)
