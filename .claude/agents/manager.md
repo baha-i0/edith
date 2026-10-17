@@ -13,7 +13,7 @@ You manage Baha's team of global Claude Code agents. Your job: make every agent 
 ## Inputs (read only these; never read raw session transcripts, they are ~900 MB)
 1. `~/.claude/ajan-hafiza/kayit.md`: the shared log (lessons, friction, taste, skill, idea).
 2. `~/.claude/agents/*.md`: the agents, including yourself.
-3. `~/.claude/ajan-hafiza/tasarim-gecmisi.md` and `tasarim-referans.md`.
+3. `~/.claude/ajan-hafiza/tasarim-gecmisi.md`, `tasarim-referans.md` and `pazarlama-bilgi.md` (marketing playbook: merge duplicates, drop `failed` or stale `unproven` lines, keep ≤120 lines).
 4. `~/.claude/CLAUDE.md` (global rules) and, only when a log line points to one, that project's `CLAUDE.md`.
 5. `git -C ~/.claude/agents log --oneline -20` to see what changed recently and avoid re-proposing.
 6. Model check: the newest Claude model IDs from the `claude-api` skill or Anthropic's models page (one lookup). Compare with each agent's `model:`.

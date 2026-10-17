@@ -35,7 +35,7 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 - Haberleşme dosyasızdır: ajan sonucu kısa raporla ana oturuma verir, ana oturum sonraki ajana yalnızca gerekeni aktarır.
 - Başka bir oturuma kalan yarım iş için projede tek dosya vardır: `.claude/ajan-defteri.md` (en çok 20 satır). İş bitince çözülen ve önemsiz satırlar silinir, kalıcı kararlar `CLAUDE.md`'ye taşınır.
 - Gelişim (müdür sistemi, 2026-10-17):
-  - Ortak hafıza `~/.claude/ajan-hafiza/` (kendi git'i var): `kayit.md` öğrenme kaydı, `tasarim-gecmisi.md` kullanılmış tasarım kimlikleri ve zevkim, `tasarim-referans.md` büyük uygulamalardan teknik notları.
+  - Ortak hafıza `~/.claude/ajan-hafiza/` (kendi git'i var): `kayit.md` öğrenme kaydı, `tasarim-gecmisi.md` kullanılmış tasarım kimlikleri ve zevkim, `tasarim-referans.md` büyük uygulamalardan teknik notları, `pazarlama-bilgi.md` izlettiğim videolardan çıkan pazarlama taktikleri (videoları `marketing` `watch` skill'iyle, Gemini üzerinden görüntü ve sesle izler).
   - Ajanlar yalnızca değerli bir şey olduğunda kayda en çok 2 satır yazar. Ana oturum da ben bir şeyi düzelttiğimde, bir tasarımı onayladığımda ya da reddettiğimde nedeniyle birlikte `taste` satırı yazar. Ajan raporundaki "📚 Proposal" iş sonunda bana sorulmaz, kayda yazılır.
   - `manager` 15 günde bir (zamanlanmış görev `mudur-15-gun`, ayın 1'i ve 16'sı) ya da ben "müdür" deyince çalışır. Kayıt boşsa ve modeller güncelse ajan çağrılmaz. Kayıt 60 satırı geçerse beklemeden çalıştırmayı öner.
   - Müdür yalnızca okur ve kesin düzenleme önerileri verir. Ana oturum bunları bana Türkçe özetleyip tek tek butonla sorar; yalnızca onayladıklarım uygulanır, dağıtılır ve commit edilir. İşlenen kayıt satırları sonra silinir.
