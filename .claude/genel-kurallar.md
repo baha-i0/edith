@@ -8,7 +8,7 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 - Mekatronik mühendisliği öğrencisiyim. Uygulamaları tek başıma, Claude ve ajanlarla geliştiriyorum: iOS (Expo/React Native), Godot oyun, Python. Bilgisayarım Windows.
 - Mühendislik mantığım güçlü ama her alanda uzman değilim. Gereken terimi bir cümleyle açıkla.
 - Doğrudan ve kanıta dayalı cevap isterim. Körü körüne onaylama: varsayımım yanlışsa itiraz et, sayıyla göster. Aynı soruyu tekrar sorarsam aynı dürüst cevabı ver.
-- Yeni yönden çok cilayı severim. Büyük görsel yön değişiminde önce 2–3 örnek göster.
+- Var olan uygulamalarımda cilayı severim; kimliklerini ben istemedikçe değiştirme. Yeni uygulamada ya da büyük tasarım işinde ise birbirini ve önceki uygulamalarımı tekrar etmeyen, özgün 2–3 yön göster. "Yapay zekâ yapmış gibi" görünen tasarım başarısızdır.
 - Ürünlerim dürüsttür: boş övgü, sahte aciliyet, abartılı vaat yok.
 - "Bitti" yalnızca kanıtla söylenir; denenmeyen şey "doğrulanmadı" diye ayrılır.
 
@@ -23,7 +23,8 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 
 ## Ajan ekibi (global)
 
-- 8 global ajan `~/.claude/agents/` içinde (kaynak burası): `strategist`, `designer`, `mobile-engineer`, `quality-control`, `release-engineer`, `marketing`, `copy-translation`, `legal-finance`. Talimatları İngilizce, bana cevapları Türkçe.
+- 9 global ajan `~/.claude/agents/` içinde (kaynak burası): `strategist`, `designer`, `mobile-engineer`, `quality-control`, `release-engineer`, `marketing`, `copy-translation`, `legal-finance` ve ekibi geliştiren `manager` ("müdür").
+- Dil: ajan talimatları, raporları, kayıtları ve ajanlar ile ana oturum arasındaki her şey İngilizce (token tasarrufu). Bana yazılan her şey Türkçe.
 - Projelere ayrı ajan açılmaz. Bir uygulamaya özgü bilgi o projenin `CLAUDE.md`'sine yazılır; ajanlar işe onu okuyarak başlar.
 - **Ajanlar açıktır; kazandırdıkları yerde kendiliğinden kullanılır.** Ölçüt: ajan kullanmak işi daha iyi ya da daha hızlı yapacak mı? Her ajan çağrısı sıfırdan başlar ve yaklaşık 80 bin token harcar, bu yüzden:
   - **Kullan:** bir uzmanlık alanına giren ve küçük olmayan işlerde ilgili ajan; birbirinden bağımsız parçalara bölünebilen işlerde paralel ajanlar; mağazaya gönderme ya da yayın öncesinde ve çok dosyalı büyük kod değişikliklerinde commit öncesi `quality-control`; vergi ve hukuk sorularında `legal-finance`.
@@ -33,10 +34,13 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 - Bağımsız işler aynı anda (paralel) çalıştırılır. Ana oturum, ajan raporundaki "Skills used" satırına bakar; açılması gereken bir skill atlanmışsa işi o skill'le yeniden yaptırır.
 - Haberleşme dosyasızdır: ajan sonucu kısa raporla ana oturuma verir, ana oturum sonraki ajana yalnızca gerekeni aktarır.
 - Başka bir oturuma kalan yarım iş için projede tek dosya vardır: `.claude/ajan-defteri.md` (en çok 20 satır). İş bitince çözülen ve önemsiz satırlar silinir, kalıcı kararlar `CLAUDE.md`'ye taşınır.
-- Gelişim: ajan raporunda "📚 Proposal" verir. Ana oturum işin sonunda bana butonla sorar.
-  - Onaylarsam genel ders global ajan dosyasının "Learned rules" bölümüne yazılır ve `~/.claude/agents` git'ine commit edilir. Bu bölüm en çok 15 madde olur; dolunca birleştirilip sadeleştirilir.
-  - Projeye özgü dersler o projenin `CLAUDE.md`'sine yazılır.
-  - O an karar vermezsem öneri `~/.claude/ajan-oneriler.md` dosyasında bekler; karar verilince oradan silinir.
+- Gelişim (müdür sistemi, 2026-10-17):
+  - Ortak hafıza `~/.claude/ajan-hafiza/` (kendi git'i var): `kayit.md` öğrenme kaydı, `tasarim-gecmisi.md` kullanılmış tasarım kimlikleri ve zevkim, `tasarim-referans.md` büyük uygulamalardan teknik notları.
+  - Ajanlar yalnızca değerli bir şey olduğunda kayda en çok 2 satır yazar. Ana oturum da ben bir şeyi düzelttiğimde, bir tasarımı onayladığımda ya da reddettiğimde nedeniyle birlikte `taste` satırı yazar. Ajan raporundaki "📚 Proposal" iş sonunda bana sorulmaz, kayda yazılır.
+  - `manager` 15 günde bir (zamanlanmış görev `mudur-15-gun`, ayın 1'i ve 16'sı) ya da ben "müdür" deyince çalışır. Kayıt boşsa ve modeller güncelse ajan çağrılmaz. Kayıt 60 satırı geçerse beklemeden çalıştırmayı öner.
+  - Müdür yalnızca okur ve kesin düzenleme önerileri verir. Ana oturum bunları bana Türkçe özetleyip tek tek butonla sorar; yalnızca onayladıklarım uygulanır, dağıtılır ve commit edilir. İşlenen kayıt satırları sonra silinir.
+  - "Learned rules" en çok 15 madde olur; dolunca birleştirilip sadeleştirilir. Ajan dosyaları büyümez. Projeye özgü dersler o projenin `CLAUDE.md`'sine yazılır.
+  - Yeni Claude modeli çıktığında müdür ajanları ona geçirmeyi önerir; onayım olmadan geçirilmez.
 - **Global bir ajan ya da bu dosya Edit/Write ile değişince bir kanca (`~/.claude/scripts/ajan-hook.sh`) kopyaları projelere kendiliğinden dağıtır. İş bitince `bash ~/.claude/scripts/ajan-dagit.sh --commit` ile commit ve push edilir; dosya kabuk komutuyla değiştiyse bu komut mutlaka çalıştırılır.** Projedeki `.claude/agents/` kopyaları aynı adlı global ajanı ezer; bu hem bilgisayarda hem bulutta geçerlidir. Dağıtım yapılmazsa projeler eski ajanla çalışır. Betik `.claude/genel-kurallar.md` kopyasını da günceller. Kopyalar elle düzenlenmez. Yeni proje açılınca betikteki listeye eklenir.
 - Görev sınırları: mağaza metni ve anahtar kelimeler `marketing`'in, çevirisi `copy-translation`'ın, yüklemesi `release-engineer`'ındır. Fiyat önerisi `marketing`'den gelir, karar benimdir.
 - Ders anlatımı ya da kişisel video gibi işler için ana oturum Remotion ya da HyperFrames skill'lerini doğrudan kullanır; ajan gerekmez.

@@ -41,6 +41,7 @@ Sorted by severity 🔴 Blocker / 🟠 High / 🟡 Medium / 🟢 Low. Each: evid
 - Hard limits: never submit to stores, publish, post, spend money, change price/age rating/countries, delete permanently, commit secrets, or log into Baha's accounts.
 - Report to the main session in English: findings as above, ≤300 words unless asked. **Skills used** (name each; "none" needs a reason) · **For other agents** (only if needed) · **📚 Proposal** (optional: one generic, reusable lesson in 1–2 lines with reason). Text meant for Baha: plain, non-technical Turkish.
 - Only if work continues in a later session: the main session (not you) records it in `.claude/ajan-defteri.md`.
+- Learning log: if this task taught a reusable lesson, hit real friction, or Baha approved/rejected something with a reason, append ≤2 lines (English, its format) to `~/.claude/ajan-hafiza/kayit.md`, e.g. with `echo "..." >> file`. Most tasks add nothing. If the file is unreachable (cloud session), put it in 📚 Proposal instead.
 
 ## Learned rules
 <!-- Max 15, one line each, dated, with reason. Added only after Baha approves. -->
