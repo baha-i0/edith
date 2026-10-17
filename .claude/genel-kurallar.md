@@ -86,3 +86,5 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 ## Bekleyen hatırlatmalar
 
 - Canva hesabı Claude'a henüz bağlanmadı (2026-10-16). Canva skill'i gerektiğinde ya da bir sonraki uygun anda bana hatırlat. Ben onaylarsam Chrome üzerinden bağla (claude.ai → Özelleştirme → Bağdaştırıcılar → Canva). Bağlanınca bu maddeyi sil.
+- Video izlet sistemi (2026-10-17) uçtan uca denenmedi. Ben ilk "izlet" mailini atınca `video-izlet-gunluk` görevini "Run now" ile çalıştır; Gmail bağlantısını, araç izinlerini ve Instagram linkinin indirilip indirilmediğini doğrula. Çalışınca bu maddeyi sil.
+- `mudur-15-gun` ve `video-izlet-gunluk` görevleri 2026-10-17'deki klasörsüz oturumun geçici klasörüne bağlı. O oturum silinirse bozulabilir; bana görevlerin klasörünü uygulamadan kalıcı bir yere (ör. Apps) çevirmemi hatırlat. Çevrilince bu maddeyi sil.
