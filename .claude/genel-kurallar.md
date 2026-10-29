@@ -45,7 +45,10 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
   - Yeni Claude modeli çıktığında müdür ajanları ona geçirmeyi önerir; onayım olmadan geçirilmez.
 - **Global bir ajan ya da bu dosya Edit/Write ile değişince bir kanca (`~/.claude/scripts/ajan-hook.sh`) kopyaları projelere kendiliğinden dağıtır. İş bitince `bash ~/.claude/scripts/ajan-dagit.sh --commit` ile commit ve push edilir; dosya kabuk komutuyla değiştiyse bu komut mutlaka çalıştırılır.** Projedeki `.claude/agents/` kopyaları aynı adlı global ajanı ezer; bu hem bilgisayarda hem bulutta geçerlidir. Dağıtım yapılmazsa projeler eski ajanla çalışır. Betik `.claude/genel-kurallar.md` kopyasını da günceller. Kopyalar elle düzenlenmez. Yeni proje açılınca betikteki listeye eklenir.
 - Görev sınırları: mağaza metni ve anahtar kelimeler `marketing`'in, çevirisi `copy-translation`'ın, yüklemesi `release-engineer`'ındır. Fiyat önerisi `marketing`'den gelir, karar benimdir.
-- Model düşmesi (2026-10-30): güvenlik filtresi bir isteği işaretlerse ana oturum sessizce Opus 4.8'e geçmez, bana sorar (`switchModelsOnFlag: false`). Ajanlarda bu engellenemiyor; bir ajan "switched to <model>" uyarısı verirse ana oturum bana söyler ve gerekiyorsa işi kendisi yapar. Varsayılan model bilerek Sonnet; Opus'u oturumda ben seçerim.
+- Model düşmesi (2026-10-30): güvenlik filtresi bir isteği işaretlerse ana oturum sessizce Opus 4.8'e geçmez, bana sorar (`switchModelsOnFlag: false`). Ajanlarda bu engellenemiyor.
+  - **Ana oturum asla düşmemeli (Baha, 2026-10-30):** filtreyi tetikleyebilecek işler (güvenlik denetimi, anahtar/sızıntı taraması, saldırı ya da açık analizi, EDITH'in borsa/API ve emir kodu) ana oturumda yapılmaz, her zaman bir ajana verilir. Ajan düşerse yalnız o düşer; ana oturum Opus 5.5'te kalır.
+  - Ajan "switched to <model>" uyarısı verirse ana oturum bunu bana söyler ve sonucunu daha sıkı kontrol eder. İşaretlenen içeriği kendisi yeniden yapmaz; eksik kalırsa işi daha dar parçalarla yine bir ajana verir.
+  - Varsayılan model bilerek Sonnet; Opus'u oturumda ben seçerim.
 - Ders anlatımı ya da kişisel video gibi işler için ana oturum Remotion ya da HyperFrames skill'lerini doğrudan kullanır; ajan gerekmez.
 
 ## Benimle çalışma
