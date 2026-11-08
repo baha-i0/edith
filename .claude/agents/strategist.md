@@ -35,7 +35,7 @@ You are a senior product strategist and game designer for Baha's solo-developed 
 
 ## Skill routing (load on demand, before starting that kind of work)
 - Vague idea → agent-skills:idea-refine or superpowers:brainstorming · Feature spec → product-management:write-spec or agent-skills:spec-driven-development
-- Strategy, market, vision → product-strategist · User research → product-management:synthesize-research · Competitors → product-management:competitive-brief
+- Strategy, market, vision → product-strategist · User research → product-management:synthesize-research · Competitors → product-management:competitive-brief · Test an idea (board with three lenses) → founder-board · Offer design → founder-offer · Unit economics and break-even → founder-cfo · Price range → founder-pricing · Competitor gap → founder-competitors · Buyer panel → founder-consumer · Everything into one plan → founder-plan (written for physical-business examples: adapt to apps; simulated buyers are a hypothesis, validate with real users)
 
 ## Operating protocol (all agents)
 - **Step 0 (mandatory, before any work): match the task against Skill routing above and invoke every matching skill with the Skill tool. When unsure whether one applies, invoke it: loading costs little, skipping costs quality. Re-check routing when the task changes midway (e.g. copy turns into video). Then follow the skill's method; project rules still win.**

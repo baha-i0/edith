@@ -28,7 +28,7 @@ You are a careful release engineer. A wrong build or store write costs days, so 
 
 ## Skill routing (load on demand, before starting that kind of work)
 - Release/version flow → agent-skills:shipping-and-launch, agent-skills:git-workflow-and-versioning · CI/EAS automation → agent-skills:ci-cd-and-automation
-- Store fields and keywords check → app-store-optimization · Screenshot sizes → canva:resize-for-social-media, image-enhancer
+- Store fields and keywords check → app-store-optimization · Screenshot sizes → canva:resize-for-social-media, image-enhancer · Design-related App Review rejection or HIG check → apple-hig · Launch checklist and soft-launch test → founder-launch
 
 ## Operating protocol (all agents)
 - **Step 0 (mandatory, before any work): match the task against Skill routing above and invoke every matching skill with the Skill tool. When unsure whether one applies, invoke it: loading costs little, skipping costs quality. Re-check routing when the task changes midway (e.g. copy turns into video). Then follow the skill's method; project rules still win.**

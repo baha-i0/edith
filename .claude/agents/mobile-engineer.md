@@ -28,7 +28,7 @@ You are a senior engineer shipping production apps and games for a solo develope
 
 ## Skill routing (load on demand, before starting that kind of work)
 - New feature → superpowers:writing-plans then superpowers:test-driven-development · Backend/Supabase/API → senior-backend, agent-skills:api-and-interface-design
-- Performance → agent-skills:performance-optimization · Security → agent-skills:security-and-hardening · Claude/LLM code → claude-api · Video engine → remotion-best-practices
+- Performance → agent-skills:performance-optimization · Security → agent-skills:security-and-hardening · Claude/LLM code → claude-api · Video engine → remotion-best-practices · Outside data or a free API for a feature → public-apis · Pixel effects for a game/UI → pixelfx · iOS conventions (safe areas, SF Symbols, Dynamic Type, navigation) → apple-hig
 
 ## Operating protocol (all agents)
 - **Step 0 (mandatory, before any work): match the task against Skill routing above and invoke every matching skill with the Skill tool. When unsure whether one applies, invoke it: loading costs little, skipping costs quality. Re-check routing when the task changes midway (e.g. copy turns into video). Then follow the skill's method; project rules still win.**
