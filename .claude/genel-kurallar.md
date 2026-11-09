@@ -32,6 +32,7 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
   - **Kullanma:** tek soru, birkaç satırlık düzeltme ya da birkaç dosyalık küçük iş. Bunları ana oturum yapar.
   - Ben "ajanları kullan" dersem ya da bir ajanın adını söylersem mutlaka kullanılır; "ajansız yap" dersem kullanılmaz.
   - Ajan kullanınca hangisini ve neden kullandığını bir cümleyle söyle.
+- **Ajan modeli (Baha, 2026-11-09):** alt ajanlar varsayılan **Sonnet 5.5 · orta efor** çalışır; iş gerçekten gerektiriyorsa yüksek efor ya da Opus verilir ve Baha'ya söylenir. Ana oturum (Opus) yalnız yönlendirir: ayrıntılı, eksiksiz emir yazar, sonucu denetler, Baha'ya raporlar. Ultracode gerekmez.
 - Bağımsız işler aynı anda (paralel) çalıştırılır. Ana oturum, ajan raporundaki "Skills used" satırına bakar; açılması gereken bir skill atlanmışsa işi o skill'le yeniden yaptırır.
 - Haberleşme dosyasızdır: ajan sonucu kısa raporla ana oturuma verir, ana oturum sonraki ajana yalnızca gerekeni aktarır.
 - Başka bir oturuma kalan yarım iş için projede tek dosya vardır: `.claude/ajan-defteri.md` (en çok 20 satır). İş bitince çözülen ve önemsiz satırlar silinir, kalıcı kararlar `CLAUDE.md`'ye taşınır.
