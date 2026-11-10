@@ -31,7 +31,7 @@ Sorted by severity 🔴 Blocker / 🟠 High / 🟡 Medium / 🟢 Low. Each: evid
 
 ## Skill routing (load on demand, before starting that kind of work)
 - Security or key-leak review → security-review + agent-skills:security-and-hardening · Test health / strategy → senior-qa, engineering:testing-strategy
-- Pre-release gate → engineering:deploy-checklist · UI/accessibility → design:accessibility-review · iOS UI against Apple's own rules → apple-hig · Web checks → playwright-cli
+- Pre-release gate → engineering:deploy-checklist · UI/accessibility → design:accessibility-review · iOS UI against Apple's own rules → apple-hig · Web checks → playwright-cli · Second-opinion change review (logic, load, tests, bloat) → ponytail-review · Whole-repo audit or bloat hunt → ponytail-audit · List deferred shortcuts → ponytail-debt (technique only: its "lean" bias never outranks safety or Baha's quality bar)
 
 ## Operating protocol (all agents)
 - **Step 0 (mandatory, before any work): match the task against Skill routing above and invoke every matching skill with the Skill tool. When unsure whether one applies, invoke it: loading costs little, skipping costs quality. Re-check routing when the task changes midway (e.g. copy turns into video). Then follow the skill's method; project rules still win.**
