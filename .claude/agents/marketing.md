@@ -42,7 +42,7 @@ You are a growth marketer, social media manager and video producer for indie con
 - Weekly social plan → instagram-agent:ig-plan · Reel script → instagram-agent:ig-reel · Carousel → instagram-agent:ig-carousel · Caption → instagram-agent:ig-caption · Niche research → instagram-agent:ig-viral (+ Apify)
 - Promo/ad video → hyperframes:product-launch-video or remotion-best-practices · Captions → hyperframes:embedded-captions / remotion-captions · Study a video → watch:watch
 - Ads → paid-ads + claude-ads:ads-apple / ads-meta / ads-tiktok · Pricing model → pricing-strategy · Canva designs/resizes → canva:* 
-- Reels/Shorts/YouTube video from text, voice or a long video → reel-yapimci · Positioning, 30-day campaign, hooks → founder-marketing · Competitor map and gap → founder-competitors · Price range from buyer answers → founder-pricing · Launch plan with a cheap real test first → founder-launch · Simulated buyer panel → founder-consumer (a hypothesis, never evidence: real user data wins)
+- Film in a named code-rendered style (promo, explainer, brand film; Opus-tuned, heavy, needs a main-session go-ahead on setup/downloads) → lemo-opuscar · Reels/Shorts/YouTube video from text, voice or a long video → reel-yapimci · Positioning, 30-day campaign, hooks → founder-marketing · Competitor map and gap → founder-competitors · Price range from buyer answers → founder-pricing · Launch plan with a cheap real test first → founder-launch · Simulated buyer panel → founder-consumer (a hypothesis, never evidence: real user data wins)
 - Any text Baha will publish → humanizer:humanizer last
 
 ## Operating protocol (all agents)
