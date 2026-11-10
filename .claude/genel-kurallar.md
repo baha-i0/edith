@@ -32,9 +32,20 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
   - **Kullanma:** tek soru, birkaç satırlık düzeltme ya da birkaç dosyalık küçük iş. Bunları ana oturum yapar.
   - Ben "ajanları kullan" dersem ya da bir ajanın adını söylersem mutlaka kullanılır; "ajansız yap" dersem kullanılmaz.
   - Ajan kullanınca hangisini ve neden kullandığını bir cümleyle söyle.
-- **Ajan modeli (Baha, 2026-11-09):** mekanik işler (araştırma, dosya, render, test) **Sonnet 5.5 · orta**; çok denemeli yaratıcı tasarım işleri **Opus · orta** (Sonnet bu işlerde daha çok deneme yapıp daha çok token yiyebiliyor). Yüksek efor yalnız zorunluysa ve Baha'ya söylenerek. Ana oturum (Opus) yalnız yönlendirir: ayrıntılı, eksiksiz emir yazar, sonucu denetler, Baha'ya raporlar. Ultracode gerekmez.
+- **Ajan modeli (Baha, 2026-11-10; 11-09 kuralının yerine):** ajanlar kendi dosyalarındaki modelde kalır (copy-translation Sonnet 5.5, diğerleri Opus 5.5); **hepsi orta efor**. Model düşürülmez. Yüksek efor yalnız zorunluysa (ör. yayın kapısı, güvenlik denetimi, yeni dil/RTL, yeni strateji.md) ve Baha'ya söylenerek, çağrıda `effort` ile. Ana oturum (Opus · high) yalnız yönlendirir: ayrıntılı, eksiksiz emir yazar, sonucu denetler, Baha'ya raporlar. Ultracode gerekmez.
+- Aynı işin sonraki turu (düzeltme, yeni render turu, QC bulgusunun onarımı) aynı ajana SendMessage ile gider; yeni çağrı yalnız yeni konuda ya da bağlam çok şiştiyse açılır (her yeni çağrı ~80 bin token'lık soğuk başlangıçtır).
 - Bağımsız işler aynı anda (paralel) çalıştırılır. Ana oturum, ajan raporundaki "Skills used" satırına bakar; açılması gereken bir skill atlanmışsa işi o skill'le yeniden yaptırır.
 - Haberleşme dosyasızdır: ajan sonucu kısa raporla ana oturuma verir, ana oturum sonraki ajana yalnızca gerekeni aktarır.
+- Ajan emri (İngilizce, bu kalıpla; boş satırı atla):
+  GOAL: one sentence + why.
+  PROJECT: path · read only: <CLAUDE.md sections, docs/strateji.md, files:lines>.
+  KNOWN: facts already verified this session (don't re-check).
+  SCOPE: do … / don't … / files you may touch.
+  DECIDED: Baha's choices for this task, quoted with date.
+  SKILLS: must invoke … (plus your Step 0 matches).
+  DONE WHEN: commands/tests/screenshots that prove it.
+  BUDGET: e.g. ≤4 render rounds, ≤N web lookups; stop and report if exceeded.
+  REPORT: ≤N words; return exactly …
 - Başka bir oturuma kalan yarım iş için projede tek dosya vardır: `.claude/ajan-defteri.md` (en çok 20 satır). İş bitince çözülen ve önemsiz satırlar silinir, kalıcı kararlar `CLAUDE.md`'ye taşınır.
 - Gelişim (müdür sistemi, 2026-10-17):
   - Ortak hafıza `~/.claude/ajan-hafiza/` (kendi git'i var): `kayit.md` öğrenme kaydı, `tasarim-gecmisi.md` kullanılmış tasarım kimlikleri ve zevkim, `tasarim-referans.md` büyük uygulamalardan teknik notları, `pazarlama-bilgi.md` izlettiğim videolardan çıkan pazarlama taktikleri (videoları `marketing` `watch` skill'iyle, Gemini üzerinden görüntü ve sesle izler; yöntem `video-izleme.md`, tam notlar ve kareler `video-notlari/`).
