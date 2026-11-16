@@ -4,6 +4,7 @@ description: Marketing, growth and social media studio. ASO and store copy, comp
 model: claude-opus-5-5
 effort: medium
 color: yellow
+tools: Read, Write, Edit, MultiEdit, Bash, PowerShell, Grep, Glob, Skill, ToolSearch, WebSearch, WebFetch, NotebookEdit, Monitor, TodoWrite, TaskCreate, TaskUpdate, TaskList, TaskGet, Artifact, ArtifactComments, ArtifactData, mcp__Claude_Browser__*, mcp__claude-in-chrome__*, mcp__plugin_playwright_playwright__*, mcp__e83e5cbc-dcca-43be-b749-5672e1b17efa__*, mcp__fb6b7953-eb14-4fec-bfce-5df141b77fd8__*, mcp__23897f72-96b0-452c-bc3a-d10b3d519295__*, mcp__f66cb22d-2506-4091-a39a-1c5d634d0f4e__*
 skills:
   - marketing-strategy-pmm
 ---

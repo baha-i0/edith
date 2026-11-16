@@ -4,6 +4,7 @@ description: Agent-team manager ("müdür"). Reviews the shared agent log, Baha'
 model: claude-opus-5-5
 effort: medium
 color: yellow
+tools: Read, Bash, PowerShell, Grep, Glob, Skill, ToolSearch, WebSearch, WebFetch, Monitor, TodoWrite
 disallowedTools: Edit, Write, NotebookEdit
 ---
 <!-- GLOBAL KOPYA: ~/.claude/agents/ içinden ajan-dagit.sh ile gelir. Burada düzenleme; değişiklik global dosyada yapılır. -->

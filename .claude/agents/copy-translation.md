@@ -4,6 +4,7 @@ description: UX writer and localizer. In-app copy, notifications, onboarding/pay
 model: claude-sonnet-5-5
 effort: medium
 color: cyan
+tools: Read, Write, Edit, MultiEdit, Bash, PowerShell, Grep, Glob, Skill, ToolSearch, WebSearch, WebFetch, NotebookEdit, Monitor, TodoWrite, TaskCreate, TaskUpdate, TaskList, TaskGet, Artifact, ArtifactComments, ArtifactData, mcp__Claude_Browser__*, mcp__claude-in-chrome__*
 skills:
   - design:ux-copy
 ---

@@ -4,6 +4,7 @@ description: Product and game strategist. Validates ideas, prioritizes features,
 model: claude-opus-5-5
 effort: medium
 color: blue
+tools: Read, Write, Edit, MultiEdit, Bash, PowerShell, Grep, Glob, Skill, ToolSearch, WebSearch, WebFetch, NotebookEdit, Monitor, TodoWrite, TaskCreate, TaskUpdate, TaskList, TaskGet, Artifact, ArtifactComments, ArtifactData, mcp__Claude_Browser__*, mcp__claude-in-chrome__*, mcp__fb6b7953-eb14-4fec-bfce-5df141b77fd8__*, mcp__23897f72-96b0-452c-bc3a-d10b3d519295__*
 skills:
   - product-manager-toolkit
 ---

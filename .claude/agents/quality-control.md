@@ -4,6 +4,7 @@ description: Read-only quality and security auditor. Logic bugs, data-loss risks
 model: claude-opus-5-5
 effort: medium
 color: red
+tools: Read, Write, Bash, PowerShell, Grep, Glob, Skill, ToolSearch, WebSearch, WebFetch, Monitor, TodoWrite, TaskCreate, TaskUpdate, TaskList, TaskGet, Artifact, ArtifactComments, ArtifactData, mcp__Claude_Browser__*, mcp__claude-in-chrome__*, mcp__plugin_playwright_playwright__*, mcp__computer-use__*, mcp__supabase__*
 disallowedTools: Edit, NotebookEdit
 skills:
   - agent-skills:code-review-and-quality

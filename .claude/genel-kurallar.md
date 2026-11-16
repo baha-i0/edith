@@ -36,6 +36,11 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 - Aynı işin sonraki turu (düzeltme, yeni render turu, QC bulgusunun onarımı) aynı ajana SendMessage ile gider; yeni çağrı yalnız yeni konuda ya da bağlam çok şiştiyse açılır (her yeni çağrı ~200 bin token'lık soğuk başlangıçtır).
 - Bağımsız işler aynı anda (paralel) çalıştırılır. Ana oturum, ajan raporundaki "Skills used" satırına bakar; açılması gereken bir skill atlanmışsa işi o skill'le yeniden yaptırır.
 - Haberleşme dosyasızdır: ajan sonucu kısa raporla ana oturuma verir, ana oturum sonraki ajana yalnızca gerekeni aktarır.
+- **Token tasarrufu, kaliteden kısmadan (Baha, 2026-11-16).** Ölçüm: ajan, iş yapmadan önce ~88 bin tokenlık yükle başlıyor. Bunun ~25 bini 820 araç adı, ~15 bini skill listesi. Ajan her adımda bu yükü yeniden okur.
+  - Her ajanın dosyasında `tools:` listesi vardır; ajan yalnız işine yarayan araçları ve bağdaştırıcıları görür. Bir ajanın yeni bir bağdaştırıcıya ihtiyacı olursa listesine eklenir, ajan araçsız bırakılmaz. Bağdaştırıcı yeniden bağlanırsa adı (`mcp__<kimlik>__*`) değişir; listeler güncellenir.
+  - Ana oturum ajana bulduğunu hazır verir: dosya:satır, doğrulanmış gerçekler (KNOWN) ve kısa rapor sınırı. Ajan aynı şeyi baştan aramaz.
+  - Salt arama ve okuma işi ajan yerine ana oturumda ya da `Explore` ile yapılır. Belge ya da dokümantasyon sorusu için ajan açılmaz; ana oturum bakar.
+  - Benzer işler tek ajanda toplanır; sonraki tur aynı ajana SendMessage ile gider.
 - Ajan emri (İngilizce, bu kalıpla; boş satırı atla):
   GOAL: one sentence + why.
   PROJECT: path · read only: <CLAUDE.md sections, docs/strateji.md, files:lines>.
@@ -49,7 +54,7 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 - Başka bir oturuma kalan yarım iş için projede tek dosya vardır: `.claude/ajan-defteri.md` (en çok 20 satır). İş bitince çözülen ve önemsiz satırlar silinir, kalıcı kararlar `CLAUDE.md`'ye taşınır.
 - Gelişim (müdür sistemi, 2026-10-17):
   - Ortak hafıza `~/.claude/ajan-hafiza/` (kendi git'i var): `kayit.md` öğrenme kaydı, `tasarim-gecmisi.md` kullanılmış tasarım kimlikleri ve zevkim, `tasarim-referans.md` büyük uygulamalardan teknik notları, `pazarlama-bilgi.md` izlettiğim videolardan çıkan pazarlama taktikleri (videoları `marketing` `watch` skill'iyle, Gemini üzerinden görüntü ve sesle izler; yöntem `video-izleme.md`, tam notlar ve kareler `video-notlari/`).
-  - Video kuyruğu: telefondan kendime konusu "izlet" (önemliyse "izlet önemli") olan bir mail atarım. Zamanlanmış görev `video-izlet-gunluk` her akşam 21:00'de bunları toplu işler, maile "izlendi" etiketi koyar ve bana Türkçe özet bildirir. Gemini ücretsiz kademede kalır; ödeme hesabı bağlanmaz.
+  - Video kuyruğu: "izlet" konulu mailler her akşam 21:00'de `video-izlet-gunluk` ile işlenir (ayrıntı `video-izleme.md`). Gemini ücretsiz kademede kalır; ödeme hesabı bağlanmaz.
   - Ajanlar yalnızca değerli bir şey olduğunda kayda en çok 2 satır yazar. Ana oturum da ben bir şeyi düzelttiğimde, bir tasarımı onayladığımda ya da reddettiğimde nedeniyle birlikte `taste` satırı yazar. Ajan raporundaki "📚 Proposal" iş sonunda bana sorulmaz, kayda yazılır.
   - `manager` 15 günde bir (zamanlanmış görev `mudur-15-gun`, ayın 1'i ve 16'sı) ya da ben "müdür" deyince çalışır. Kayıt boşsa ve modeller güncelse ajan çağrılmaz. Kayıt 60 satırı geçerse beklemeden çalıştırmayı öner.
   - Müdür yalnızca okur ve kesin düzenleme önerileri verir. Ana oturum bunları bana Türkçe özetleyip tek tek butonla sorar; yalnızca onayladıklarım uygulanır, dağıtılır ve commit edilir. İşlenen kayıt satırları sonra silinir.
@@ -89,18 +94,11 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 
 ## Vergi ve şirket (yasal yol)
 
-- Öğrenciyim, şirketim yok. İyi para kazanana kadar **şirket (şahıs şirketi dahil) açmadan ve Bağ-Kur'a girmeden** ilerliyoruz.
-- Bunun yasal yolu **GVK Mükerrer 20/B, mobil uygulama geliştirici istisnası**:
-  - Vergi dairesinden istisna belgesi alınır.
-  - Bu işe ayrılmış tek bir banka hesabı açılır; mağaza ödemeleri yalnızca bu hesaba gelir.
-  - Banka %15 stopaj keser. Bu nihai vergidir: şirket ve yıllık beyan gerekmez, kazanç KDV'den de istisnadır.
-  - Yıllık hasılat sınırı 2026 için yaklaşık 5,3 milyon TL. Sınır aşılırsa o yılın tüm geliri istisnadan çıkar; sınıra yaklaşınca mali müşavire gidilir.
-- Sözleşmeler, banka bilgisi ve vergi formları (W-8BEN vb.) **bireysel geliştirici** olarak doldurulur. Şirket kurmayı ancak gelir 20/B sınırına yaklaşınca öner.
-- Geliri bildirmemek gibi yasa dışı yollar yok. Her zaman yasal ve en az yük getiren yolu seç.
-- İlk ödeme gelmeden önce bana hatırlat: istisna belgesini al, ayrı banka hesabını aç, mali müşavire bir kez danış.
-- Ayrıntılar: `C:\Users\bahai\OneDrive\Masaüstü\Apps\zihinsel-guc-app\docs\YASAL-VERGI-MUHASEBE.md`.
+- Öğrenciyim, şirket yok, Bağ-Kur yok; yol GVK Mükerrer 20/B istisnası, her şey bireysel geliştirici olarak, yalnız yasal yol. İlk ödemeden önce hatırlat (istisna belgesi, ayrı banka hesabı, mali müşavir). Vergi, sözleşme, banka ya da ödeme işinde önce `~/.claude/ajan-hafiza/vergi-yolu.md` okunur.
 
 ## Bekleyen hatırlatmalar
+
+- Ajan araç listeleri (2026-11-16) henüz yeni bir oturumda doğrulanmadı. Yeni bir oturumdaki ilk ajan çağrısından sonra ana oturum o ajanın kaydına (`~/.claude/projects/**/subagents/agent-*.jsonl`) bakar. Kontrol edilecekler: ilk turdaki `deferred_tools_delta` araç sayısı 820'den düştü mü (Vercel `mcp__48a4a61d` görünmemeli), ilk tur token sayısı 88 binden ne kadar indi ve ajan gereken araçlarını (tarayıcı, Supabase, Canva vb.) yükleyebiliyor mu. Sonucu bana sayıyla söyle; düşmediyse `tools:` satırlarını geri almayı öner. Doğrulanınca bu maddeyi sil.
 
 - Canva hesabı Claude'a henüz bağlanmadı (2026-10-16). Canva skill'i gerektiğinde ya da bir sonraki uygun anda bana hatırlat. Ben onaylarsam Chrome üzerinden bağla (claude.ai → Özelleştirme → Bağdaştırıcılar → Canva). Bağlanınca bu maddeyi sil.
 - Video izlet sistemi (2026-10-17) uçtan uca denenmedi. Ben ilk "izlet" mailini atınca `video-izlet-gunluk` görevini "Run now" ile çalıştır; Gmail bağlantısını, araç izinlerini ve Instagram linkinin indirilip indirilmediğini doğrula. Çalışınca bu maddeyi sil.

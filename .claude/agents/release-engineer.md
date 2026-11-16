@@ -4,6 +4,7 @@ description: Release engineer. Versioning, Expo/EAS builds, signing, TestFlight,
 model: claude-opus-5-5
 effort: medium
 color: orange
+tools: Read, Write, Edit, MultiEdit, Bash, PowerShell, Grep, Glob, Skill, ToolSearch, WebSearch, WebFetch, NotebookEdit, Monitor, TodoWrite, TaskCreate, TaskUpdate, TaskList, TaskGet, Artifact, ArtifactComments, ArtifactData, mcp__Claude_Browser__*, mcp__claude-in-chrome__*, mcp__plugin_playwright_playwright__*, mcp__e83e5cbc-dcca-43be-b749-5672e1b17efa__*
 skills:
   - engineering:deploy-checklist
 ---

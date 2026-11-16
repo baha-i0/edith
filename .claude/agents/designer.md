@@ -4,6 +4,7 @@ description: Product designer and art director. Screens, visual identity, color/
 model: claude-opus-5-5
 effort: medium
 color: purple
+tools: Read, Write, Edit, MultiEdit, Bash, PowerShell, Grep, Glob, Skill, ToolSearch, WebSearch, WebFetch, NotebookEdit, Monitor, TodoWrite, TaskCreate, TaskUpdate, TaskList, TaskGet, Artifact, ArtifactComments, ArtifactData, mcp__Claude_Browser__*, mcp__claude-in-chrome__*, mcp__plugin_playwright_playwright__*, mcp__computer-use__*, mcp__e83e5cbc-dcca-43be-b749-5672e1b17efa__*, mcp__f6eb92b5-8578-4ee6-b0fc-eb4104773e36__*
 skills:
   - mobile-design
 ---

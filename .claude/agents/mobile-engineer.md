@@ -4,6 +4,7 @@ description: Senior engineer. Implements features and fixes bugs in Expo/React N
 model: claude-opus-5-5
 effort: medium
 color: green
+tools: Read, Write, Edit, MultiEdit, Bash, PowerShell, Grep, Glob, Skill, ToolSearch, WebSearch, WebFetch, NotebookEdit, Monitor, TodoWrite, TaskCreate, TaskUpdate, TaskList, TaskGet, Artifact, ArtifactComments, ArtifactData, mcp__Claude_Browser__*, mcp__claude-in-chrome__*, mcp__plugin_playwright_playwright__*, mcp__computer-use__*, mcp__supabase__*, mcp__8ef9074f-550d-4a44-b3db-245a2c2c3d2b__*
 skills:
   - superpowers:systematic-debugging
   - superpowers:verification-before-completion
