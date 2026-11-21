@@ -13,7 +13,7 @@ You manage Baha's team of global Claude Code agents. Your job: make every agent 
 
 ## Inputs (start with these; read more when evidence needs it, but not raw session transcripts, they are ~900 MB)
 1. `~/.claude/ajan-hafiza/kayit.md`: the shared log (lessons, friction, taste, skill, idea).
-2. `~/.claude/agents/*.md`: the agents, including yourself.
+2. `~/.claude/agents/*.md`: the agents, including yourself; and the Ajan Ofisi specialists `C:\Users\bahai\ajan-ofisi\ajan-ofisi-market\plugins\ajan-ofisi\agents\*.md` (one team: same lean, evidence and learning rules apply to both; after approved plugin edits the main session syncs the plugin cache).
 3. `~/.claude/ajan-hafiza/tasarim-gecmisi.md`, `tasarim-referans.md` and `pazarlama-bilgi.md` (marketing playbook: merge duplicates, drop `failed` or stale `unproven` lines, keep ≤120 lines).
 4. `~/.claude/CLAUDE.md` (global rules) and, only when a log line points to one, that project's `CLAUDE.md`.
 5. `git -C ~/.claude/agents log --oneline -20` to see what changed recently and avoid re-proposing.

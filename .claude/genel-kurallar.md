@@ -23,7 +23,8 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 
 ## Ajan ekibi (global)
 
-- 9 global ajan `~/.claude/agents/` içinde (kaynak burası): `strategist`, `designer`, `mobile-engineer`, `quality-control`, `release-engineer`, `marketing`, `copy-translation`, `legal-finance` ve ekibi geliştiren `manager` ("müdür").
+- Tek ekip, iki ev (birleştirme: Baha, 2026-11-21). 9 global ajan `~/.claude/agents/` içinde (kaynak burası): `strategist`, `designer`, `mobile-engineer`, `quality-control`, `release-engineer`, `marketing`, `copy-translation`, `legal-finance` ve ekibi geliştiren `manager` ("müdür"). 9 uzman Ajan Ofisi plugin'inde (`C:\Users\bahai\ajan-ofisi\ajan-ofisi-market`, kendi git'i; kurulu kopya plugin cache'i): `video-yonetmeni` (+ `ui-animasyon-ajani`, `simulasyon-ajani`, `kurgu-ajani`), `mekatronik-muhendisi`, `test-yazici`, `egitmen`, `arastirmaci`, `kaynak-tarayici`. Çakışan 4 ofis ajanı (yazilim-muhendisi, denetci, buyume-uzmani, cevirmen) içerikleri bizimkilere katılıp `agents-arsiv/`'e alındı. 3D ofis paneli `http://localhost:4747` (8 departman, `ofis/departmanlar.json`).
+- Ek görev sınırları: video üretimi `video-yonetmeni`'nin, `marketing` ona brif ve senaryo verir (Baha, 2026-11-21); yalnız test yazımı `test-yazici`; uygulama içi UI animasyonu `designer`; kilometre taşı eleştirisi `quality-control`.
 - Dil: ajan talimatları, raporları, kayıtları ve ajanlar ile ana oturum arasındaki her şey İngilizce (token tasarrufu). Bana yazılan her şey Türkçe.
 - Projelere ayrı ajan açılmaz. Bir uygulamaya özgü bilgi o projenin `CLAUDE.md`'sine yazılır; ajanlar işe onu okuyarak başlar.
 - Her uygulamanın kendi stratejisi olur (2026-10-19): projede `docs/strateji.md` (kitle, "neden bu uygulamayı indirsinler", rakipler ve fark, konumlandırma, deneyler). Sahibi `strategist`; diğer ajanlar ürün, tasarım, metin, pazarlama ve mağaza işlerinde önce bunu okur. Her uygulamaya uyacak genel tavsiye başarısızdır. Dosya yoksa önce o oluşturulur. Şablon `~/.claude/ajan-hafiza/strateji-sablonu.md`.
@@ -32,7 +33,7 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
   - **Kullanma:** tek soru, birkaç satırlık düzeltme ya da birkaç dosyalık küçük iş. Bunları ana oturum yapar.
   - Ben "ajanları kullan" dersem ya da bir ajanın adını söylersem mutlaka kullanılır; "ajansız yap" dersem kullanılmaz.
   - Ajan kullanınca hangisini ve neden kullandığını bir cümleyle söyle.
-- **Ajan modeli (Baha, 2026-11-10; 11-09 kuralının yerine):** ajanlar kendi dosyalarındaki modelde kalır (copy-translation Sonnet 5.5, diğerleri Opus 5.5); **hepsi orta efor**. Model düşürülmez. Yüksek efor yalnız zorunluysa (ör. yayın kapısı, güvenlik denetimi, yeni dil/RTL, yeni strateji.md) ve Baha'ya söylenerek, çağrıda `effort` ile. Ana oturum (Opus · high) yalnız yönlendirir: ayrıntılı, eksiksiz emir yazar, sonucu denetler, Baha'ya raporlar. Ultracode gerekmez.
+- **Ajan modeli (Baha, 2026-11-10; 11-09 kuralının yerine):** ajanlar kendi dosyalarındaki modelde kalır (copy-translation Sonnet 5.5, diğerleri Opus 5.5); **hepsi orta efor**, istisna: `egitmen`, `arastirmaci`, `kurgu-ajani` yüksek kalır (Baha, 2026-11-21). Model düşürülmez. Yüksek efor yalnız zorunluysa (ör. yayın kapısı, güvenlik denetimi, yeni dil/RTL, yeni strateji.md) ve Baha'ya söylenerek, çağrıda `effort` ile. Ana oturum (Opus · high) yalnız yönlendirir: ayrıntılı, eksiksiz emir yazar, sonucu denetler, Baha'ya raporlar. Ultracode gerekmez.
 - Aynı işin sonraki turu (düzeltme, yeni render turu, QC bulgusunun onarımı) aynı ajana SendMessage ile gider; yeni çağrı yalnız yeni konuda ya da bağlam çok şiştiyse açılır (her yeni çağrı ~200 bin token'lık soğuk başlangıçtır).
 - Bağımsız işler aynı anda (paralel) çalıştırılır. Ana oturum, ajan raporundaki "Skills used" satırına bakar; açılması gereken bir skill atlanmışsa işi o skill'le yeniden yaptırır.
 - Haberleşme dosyasızdır: ajan sonucu kısa raporla ana oturuma verir, ana oturum sonraki ajana yalnızca gerekeni aktarır.
@@ -98,7 +99,7 @@ Her uygulamanın kendi ruhu (ton, tasarım, ürün kuralları) kendi `CLAUDE.md`
 
 ## Bekleyen hatırlatmalar
 
-- Ajan araç listeleri (2026-11-16) henüz yeni bir oturumda doğrulanmadı. Yeni bir oturumdaki ilk ajan çağrısından sonra ana oturum o ajanın kaydına (`~/.claude/projects/**/subagents/agent-*.jsonl`) bakar. Kontrol edilecekler: ilk turdaki `deferred_tools_delta` araç sayısı 820'den düştü mü (Vercel `mcp__48a4a61d` görünmemeli), ilk tur token sayısı 88 binden ne kadar indi ve ajan gereken araçlarını (tarayıcı, Supabase, Canva vb.) yükleyebiliyor mu. Sonucu bana sayıyla söyle; düşmediyse `tools:` satırlarını geri almayı öner. Doğrulanınca bu maddeyi sil.
+- Ajan araç listeleri (2026-11-16) kısmen doğrulandı (2026-11-21): designer'ın ilk turu 88 bin → 72 bin token, 163 MCP aracı, Vercel yok; manager 38 bin. Kalan tek kontrol: bir ajanın gerçekten tarayıcı ya da Supabase aracını yükleyip kullanabildiği (ilk böyle işte kaydına bak). Doğrulanınca bu maddeyi sil.
 
 - Canva hesabı Claude'a henüz bağlanmadı (2026-10-16). Canva skill'i gerektiğinde ya da bir sonraki uygun anda bana hatırlat. Ben onaylarsam Chrome üzerinden bağla (claude.ai → Özelleştirme → Bağdaştırıcılar → Canva). Bağlanınca bu maddeyi sil.
 - Video izlet sistemi (2026-10-17) uçtan uca denenmedi. Ben ilk "izlet" mailini atınca `video-izlet-gunluk` görevini "Run now" ile çalıştır; Gmail bağlantısını, araç izinlerini ve Instagram linkinin indirilip indirilmediğini doğrula. Çalışınca bu maddeyi sil.
